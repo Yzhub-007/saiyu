@@ -1,21 +1,36 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { CalendarPlus, ChevronLeft, ChevronRight, Clock3, Radio } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { games, matches } from "@/lib/esports-data";
+import { games, matches as demoMatches, type Match } from "@/lib/esports-data";
 import { SiteShell, TeamMark } from "../_components/site-shell";
 
 export default function SchedulePage() {
   const [game, setGame] = useState("all");
-  const visible = useMemo(() => matches.filter((match) => game === "all" || match.game === game), [game]);
+  const [allMatches, setAllMatches] = useState<Match[]>(demoMatches);
+  const [source, setSource] = useState<"demo" | "pandascore">("demo");
+  const visible = useMemo(() => allMatches.filter((match) => game === "all" || match.game === game), [allMatches, game]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    async function loadMatches() {
+      const response = await fetch("/api/v1/matches", { signal: controller.signal });
+      if (!response.ok) return;
+      const body = (await response.json()) as { data?: Match[]; meta?: { source?: "demo" | "pandascore" } };
+        if (body.data?.length) setAllMatches(body.data);
+        if (body.meta?.source) setSource(body.meta.source);
+    }
+    loadMatches().catch(() => undefined);
+    return () => controller.abort();
+  }, []);
 
   return (
     <SiteShell active="赛程">
       <main className="mx-auto max-w-[1380px] px-4 py-7 md:px-6">
         <div className="flex flex-wrap items-end justify-between gap-4">
-          <div><p className="text-xs font-semibold tracking-[0.16em] text-[#9ab529]">MATCH CALENDAR</p><h1 className="mt-2 text-3xl font-black text-white">赛程中心</h1><p className="mt-2 text-sm text-zinc-500">时间已按你的本地时区 UTC+8 显示</p></div>
+          <div><p className="text-xs font-semibold tracking-[0.16em] text-[#9ab529]">MATCH CALENDAR</p><h1 className="mt-2 text-3xl font-black text-white">赛程中心</h1><p className="mt-2 text-sm text-zinc-500">时间按 UTC+8 显示 · {source === "pandascore" ? "PandaScore 授权聚合数据" : "演示数据"}</p></div>
           <Button variant="outline" asChild className="border-white/10 bg-white/[0.03] text-zinc-200 hover:bg-white/[0.07]"><a href="/calendar/demo.ics"><CalendarPlus />订阅我的赛事日历</a></Button>
         </div>
 
@@ -45,6 +60,6 @@ export default function SchedulePage() {
   );
 }
 
-function ScheduleRow({ match }: { match: (typeof matches)[number] }) {
+function ScheduleRow({ match }: { match: Match }) {
   return <a href={`/matches/${match.id}`} className="group grid grid-cols-[120px_minmax(0,1fr)_auto] items-center gap-4 border-b border-white/[0.07] px-4 py-5 transition hover:bg-white/[0.035] max-md:grid-cols-[88px_minmax(0,1fr)]"><div><p className="flex items-center gap-1.5 text-sm font-bold text-white">{match.status === "live" && <Radio className="size-3.5 text-[#ff6474]" />}{match.timeLabel}</p><p className="mt-1 text-xs text-zinc-600">{match.bestOf}</p></div><div className="grid grid-cols-[1fr_28px_1fr] items-center gap-2"><div className="flex min-w-0 items-center justify-end gap-2"><span className="truncate text-sm font-semibold text-zinc-300">{match.teamA}</span><TeamMark label={match.teamAShort} color={match.teamAColor} /></div><span className="text-center font-mono text-xs text-zinc-700">VS</span><div className="flex min-w-0 items-center gap-2"><TeamMark label={match.teamBShort} color={match.teamBColor} /><span className="truncate text-sm font-semibold text-zinc-300">{match.teamB}</span></div></div><div className="max-md:col-span-2 max-md:text-right"><p className="text-sm font-semibold text-zinc-400">{match.league}</p><p className="mt-1 flex items-center justify-end gap-1 text-xs text-zinc-600"><Clock3 className="size-3" />{match.stage}</p></div></a>;
 }

@@ -1,12 +1,12 @@
 import { eq } from "drizzle-orm";
-import { getChatGPTUser } from "@/app/chatgpt-auth";
+import { getCurrentUser } from "@/app/auth";
 import { getDb } from "@/db";
 import { notificationPreferences } from "@/db/schema";
 
 const defaults = { inAppEnabled: true, emailEnabled: true, reminder24h: true, reminder15m: true, timezone: "Asia/Shanghai" };
 
 export async function GET() {
-  const user = await getChatGPTUser();
+  const user = await getCurrentUser();
   if (!user) return Response.json({ error: "authentication_required" }, { status: 401 });
   try {
     const [row] = await getDb().select().from(notificationPreferences).where(eq(notificationPreferences.userId, user.userId)).limit(1);
@@ -17,7 +17,7 @@ export async function GET() {
 }
 
 export async function PATCH(request: Request) {
-  const user = await getChatGPTUser();
+  const user = await getCurrentUser();
   if (!user) return Response.json({ error: "authentication_required" }, { status: 401 });
   const input = await request.json() as Partial<typeof defaults>;
   const data = {

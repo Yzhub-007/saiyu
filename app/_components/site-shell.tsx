@@ -1,3 +1,4 @@
+/* eslint-disable @next/next/no-html-link-for-pages -- vinext client navigation currently breaks with next/link */
 import { Bell, CalendarDays, LayoutDashboard, Search, Trophy, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -33,7 +34,7 @@ export function SiteShell({ children, active }: { children: React.ReactNode; act
         </nav>
       </header>
       {children}
-      <footer className="mt-12 border-t border-white/[0.07] px-4 py-7 text-center text-xs leading-6 text-zinc-600">赛域 · 赛事数据演示版本 · 直播仅跳转官方平台 · 战力指数不代表胜率</footer>
+      <footer className="mt-12 border-t border-white/[0.07] px-4 py-7 text-center text-xs leading-6 text-zinc-600">赛域 · 授权数据优先 · 直播仅跳转官方平台 · 战力指数不代表胜率</footer>
     </div>
   );
 }

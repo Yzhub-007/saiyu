@@ -1,4 +1,5 @@
 "use client";
+/* eslint-disable @next/next/no-location-assign-relative-destination -- WebMCP navigation must work without next/router in vinext */
 
 import { useEffect } from "react";
 

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { SessionKeeper } from "./session-keeper";
 
 export const metadata: Metadata = {
   title: "赛域｜全球中文电竞赛程与数据中心",
@@ -17,7 +18,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="zh-CN">
-      <body className="antialiased">{children}</body>
+      <body className="antialiased"><SessionKeeper />{children}</body>
     </html>
   );
 }

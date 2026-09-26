@@ -1,20 +1,21 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowUpRight, CalendarPlus, Clock3, Database, Radio, ShieldCheck, Swords } from "lucide-react";
+import { ArrowUpRight, CalendarPlus, Database, Radio, ShieldCheck, Swords } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { getMatch, powerRankings } from "@/lib/esports-data";
+import { powerRankings } from "@/lib/esports-data";
+import { findMatch } from "@/lib/matches-service";
 import { MetricBar, SiteShell, TeamMark } from "../../_components/site-shell";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const match = getMatch(id);
+  const { data: match } = await findMatch(id);
   return match ? { title: `${match.teamA} vs ${match.teamB}｜赛域`, description: `${match.league} ${match.stage}，赛程、战力分析与官方观赛入口。` } : {};
 }
 
 export default async function MatchPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const match = getMatch(id);
+  const { data: match } = await findMatch(id);
   if (!match) notFound();
   const left = powerRankings.find((team) => team.id === match.teamAId) ?? { score: 84, form: 86, opponent: 82, map: 85, roster: 87, schedule: 79 };
   const right = powerRankings.find((team) => team.id === match.teamBId) ?? { score: 82, form: 83, opponent: 81, map: 84, roster: 80, schedule: 82 };
@@ -31,7 +32,7 @@ export default async function MatchPage({ params }: { params: Promise<{ id: stri
             <div className="text-center"><p className="text-xs font-semibold text-[#d8ff3e]">{match.timeLabel}</p><div className="mt-3 font-mono text-5xl font-black text-white"><span>{match.scoreA ?? "–"}</span><span className="mx-4 text-zinc-700">:</span><span>{match.scoreB ?? "–"}</span></div><p className="mt-3 text-xs text-zinc-600">{match.detail}</p></div>
             <Link href={`/teams/${match.teamBId}`} className="flex items-center justify-center gap-5 md:justify-start"><TeamMark label={match.teamBShort} color={match.teamBColor} size="lg" /><div><h2 className="text-2xl font-black text-white">{match.teamB}</h2><p className="mt-2 text-sm text-zinc-500">战力指数 <span className="font-mono font-bold text-[#d8ff3e]">{right.score}</span></p></div></Link>
           </div>
-          <div className="flex flex-wrap justify-center gap-3 border-t border-white/[0.07] bg-black/10 px-4 py-4"><Button asChild className="bg-[#d8ff3e] font-bold text-[#10140d] hover:bg-[#c6ed2f]"><a href={match.streamUrl} target="_blank" rel="noreferrer"><Radio />前往 {match.streamPlatform}<ArrowUpRight /></a></Button><Button variant="outline" asChild className="border-white/10 bg-white/[0.03] text-zinc-300 hover:bg-white/[0.07]"><a href={`/calendar/match/${match.id}.ics`}><CalendarPlus />加入日历</a></Button></div>
+          <div className="flex flex-wrap justify-center gap-3 border-t border-white/[0.07] bg-black/10 px-4 py-4">{match.streamUrl && <Button asChild className="bg-[#d8ff3e] font-bold text-[#10140d] hover:bg-[#c6ed2f]"><a href={match.streamUrl} target="_blank" rel="noreferrer"><Radio />前往 {match.streamPlatform}<ArrowUpRight /></a></Button>}<Button variant="outline" asChild className="border-white/10 bg-white/[0.03] text-zinc-300 hover:bg-white/[0.07]"><a href={`/calendar/match/${match.id}.ics`}><CalendarPlus />加入日历</a></Button></div>
         </section>
 
         <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">

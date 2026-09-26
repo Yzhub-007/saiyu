@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { CalendarPlus, Check, Loader2, Mail, MonitorDot } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -11,6 +11,16 @@ export function PreferencesPanel({ signedIn }: { signedIn: boolean }) {
   const [prefs, setPrefs] = useState<Preferences>({ inAppEnabled: true, emailEnabled: true, reminder24h: true, reminder15m: true, timezone: "Asia/Shanghai" });
   const [state, setState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const update = (key: keyof Preferences, value: boolean | string) => setPrefs((current) => ({ ...current, [key]: value }));
+  useEffect(() => {
+    if (!signedIn) return;
+    async function loadPreferences() {
+      const response = await fetch("/api/v1/notification-preferences");
+      if (!response.ok) return;
+      const body = (await response.json()) as { data?: Preferences };
+      if (body.data) setPrefs(body.data);
+    }
+    loadPreferences().catch(() => undefined);
+  }, [signedIn]);
   async function save() {
     setState("saving");
     try {
