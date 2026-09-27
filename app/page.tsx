@@ -5,5 +5,5 @@ export const dynamic = "force-dynamic";
 
 export default async function Home() {
   const result = await listMatches();
-  return <EsportsDashboard initialMatches={result.data} dataSource={result.meta.source} />;
+  return <EsportsDashboard initialMatches={result.data} dataSource={result.meta.source} stale={result.meta.stale} />;
 }

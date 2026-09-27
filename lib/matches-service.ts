@@ -1,3 +1,6 @@
+import { eq } from "drizzle-orm";
+import { getDb } from "@/db";
+import { matchSnapshots } from "@/db/schema";
 import { getMatch, matches as demoMatches, type Match } from "./esports-data";
 import { PandaScoreAdapter } from "./data-sources/pandascore";
 
@@ -29,6 +32,7 @@ export async function listMatches(filters: MatchFilters = {}): Promise<{ data: M
   if (isPandaScoreConfigured()) {
     try {
       const liveMatches = await loadPandaMatches();
+      await saveMatchSnapshot(liveMatches, generatedAt);
       return {
         data: applyFilters(liveMatches, filters),
         meta: { source: "pandascore", licensed: true, generatedAt, stale: false },
@@ -41,6 +45,20 @@ export async function listMatches(filters: MatchFilters = {}): Promise<{ data: M
             source: "pandascore",
             licensed: true,
             generatedAt,
+            stale: true,
+            warning: safeMessage(error),
+          },
+        };
+      }
+      const snapshot = await loadMatchSnapshot();
+      if (snapshot?.matches.length) {
+        memoryCache = { expiresAt: Date.now() + CACHE_MS, matches: snapshot.matches };
+        return {
+          data: applyFilters(snapshot.matches, filters),
+          meta: {
+            source: "pandascore",
+            licensed: true,
+            generatedAt: snapshot.fetchedAt,
             stale: true,
             warning: safeMessage(error),
           },
@@ -116,8 +134,38 @@ async function loadPandaMatches() {
   const matches = [...unique.values()]
     .filter((match) => supportedGames.has(match.game))
     .sort((a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt));
+  if (!matches.length) throw new Error("PandaScore returned no supported matches");
   memoryCache = { expiresAt: Date.now() + CACHE_MS, matches };
   return matches;
+}
+
+async function saveMatchSnapshot(matches: Match[], fetchedAt: string) {
+  if (!matches.length) return;
+  try {
+    await getDb().insert(matchSnapshots).values({
+      key: "latest",
+      payload: JSON.stringify(matches),
+      fetchedAt,
+      updatedAt: fetchedAt,
+    }).onConflictDoUpdate({
+      target: matchSnapshots.key,
+      set: { payload: JSON.stringify(matches), fetchedAt, updatedAt: fetchedAt },
+    });
+  } catch (error) {
+    console.warn("Unable to persist PandaScore snapshot", safeMessage(error));
+  }
+}
+
+async function loadMatchSnapshot(): Promise<{ matches: Match[]; fetchedAt: string } | null> {
+  try {
+    const [snapshot] = await getDb().select().from(matchSnapshots).where(eq(matchSnapshots.key, "latest")).limit(1);
+    if (!snapshot) return null;
+    const parsed = JSON.parse(snapshot.payload) as Match[];
+    return Array.isArray(parsed) && parsed.length ? { matches: parsed, fetchedAt: snapshot.fetchedAt } : null;
+  } catch (error) {
+    console.warn("Unable to read PandaScore snapshot", safeMessage(error));
+    return null;
+  }
 }
 
 export type TeamSummary = {

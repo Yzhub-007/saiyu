@@ -211,14 +211,29 @@ async function cachedFetch(url: string, token: string) {
   const cached = edgeCache ? await edgeCache.match(cacheKey) : undefined;
   if (cached) return cached;
 
-  const response = await fetch(url, {
-    headers: { authorization: `Bearer ${token}`, accept: "application/json" },
-    signal: AbortSignal.timeout(8_000),
-  });
+  const response = await fetchWithRetry(url, token);
   if (edgeCache && response.ok) {
     const stored = new Response(response.clone().body, response);
     stored.headers.set("cache-control", "public, max-age=45");
     await edgeCache.put(cacheKey, stored).catch(() => undefined);
   }
   return response;
+}
+
+async function fetchWithRetry(url: string, token: string) {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const response = await fetch(url, {
+        headers: { authorization: `Bearer ${token}`, accept: "application/json" },
+        signal: AbortSignal.timeout(20_000),
+      });
+      if (attempt === 0 && (response.status === 429 || response.status >= 500)) continue;
+      return response;
+    } catch (error) {
+      lastError = error;
+      if (attempt === 1) throw error;
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error("PandaScore request failed");
 }

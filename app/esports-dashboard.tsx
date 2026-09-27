@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Bell, CalendarDays, ChevronRight, Clock3, Flame, LayoutDashboard, Radio, Search, ShieldCheck, Swords, Trophy, Users } from "lucide-react";
+import { AlertTriangle, Bell, CalendarDays, ChevronRight, Clock3, Flame, LayoutDashboard, Radio, Search, ShieldCheck, Swords, Trophy, Users } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarInset, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarProvider, SidebarRail, SidebarTrigger } from "@/components/ui/sidebar";
@@ -39,7 +39,7 @@ function MatchRow({ match }: { match: Match }) {
   );
 }
 
-export function EsportsDashboard({ initialMatches, dataSource }: { initialMatches: Match[]; dataSource: "pandascore" | "demo" }) {
+export function EsportsDashboard({ initialMatches, dataSource, stale }: { initialMatches: Match[]; dataSource: "pandascore" | "demo"; stale: boolean }) {
   const matches = initialMatches;
   const [game, setGame] = useState("all");
   const [today, setToday] = useState<Date | null>(null);
@@ -109,6 +109,8 @@ export function EsportsDashboard({ initialMatches, dataSource }: { initialMatche
         </header>
 
         <div className="mx-auto w-full max-w-[1520px] px-4 py-5 md:px-6 lg:py-7">
+          {stale && matches.length > 0 && <div className="mb-5 flex items-start gap-3 rounded-xl border border-[#ffb24b]/20 bg-[#ffb24b]/[0.07] px-4 py-3 text-sm text-[#ffd08c]"><AlertTriangle className="mt-0.5 size-4 shrink-0" /><p>实时数据暂时不可用，当前展示最后一次成功同步的赛程。</p></div>}
+          {stale && matches.length === 0 && <div className="mb-5 flex items-start gap-3 rounded-xl border border-[#ff6474]/20 bg-[#ff6474]/[0.07] px-4 py-3 text-sm text-[#ff9aa6]"><AlertTriangle className="mt-0.5 size-4 shrink-0" /><p>赛事数据源暂时不可用，请稍后刷新。我们不会用演示比赛替代正式数据。</p></div>}
           <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
             <div><div className="mb-2 flex items-center gap-2 text-xs text-zinc-500"><ShieldCheck className="size-3.5 text-[#8fa827]" /> {dataSource === "pandascore" ? "PandaScore 授权聚合数据" : "演示数据"} · 按浏览器本地时区显示 · 自动更新</div><h1 className="text-2xl font-black tracking-tight text-white md:text-3xl">今天看什么</h1><p className="mt-1 text-sm text-zinc-500">已汇总 {matches.length} 场重点赛事</p></div>
             {days.length > 0 && <div className="flex gap-1 overflow-x-auto rounded-xl border border-white/[0.07] bg-[#0e1216] p-1">{days.map((day, index) => { const key = dayKey(day); return <button key={key} onClick={() => setSelectedDay(key)} className={`shrink-0 rounded-lg px-3 py-2 text-xs font-semibold transition ${selectedDay === key ? "bg-[#d8ff3e] text-[#10140d]" : "text-zinc-500 hover:text-white"}`}>{index === 0 ? "今天" : day.toLocaleDateString("zh-CN", { weekday: "short" })} {day.getDate()}</button>; })}</div>}
