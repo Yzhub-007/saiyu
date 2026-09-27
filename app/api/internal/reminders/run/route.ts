@@ -36,7 +36,7 @@ export async function POST(request: Request) {
         if (preference.emailEnabled && preference.userEmail) {
           const inserted = await db.insert(reminderDeliveries).values({ userId: preference.userId, matchId: match.id, trigger, channel: "email" }).onConflictDoNothing().returning({ id: reminderDeliveries.id });
           if (inserted.length) {
-            const sent = await sendReminderEmail({ to: preference.userEmail, match, lead: trigger, siteUrl });
+            const sent = await sendReminderEmail({ userId: preference.userId, to: preference.userEmail, match, lead: trigger, siteUrl, timezone: preference.timezone });
             if (sent) emailSent += 1;
             else await db.delete(reminderDeliveries).where(eq(reminderDeliveries.id, inserted[0].id));
           }
