@@ -212,19 +212,7 @@ function platformFor(url?: string) {
 }
 
 async function cachedFetch(url: string, token: string) {
-  const cacheStorage = globalThis.caches as CacheStorage & { default?: Cache };
-  const edgeCache = cacheStorage?.default;
-  const cacheKey = new Request(url, { method: "GET" });
-  const cached = edgeCache ? await edgeCache.match(cacheKey) : undefined;
-  if (cached) return cached;
-
-  const response = await fetchWithRetry(url, token);
-  if (edgeCache && response.ok) {
-    const stored = new Response(response.clone().body, response);
-    stored.headers.set("cache-control", "public, max-age=45");
-    await edgeCache.put(cacheKey, stored).catch(() => undefined);
-  }
-  return response;
+  return fetchWithRetry(url, token);
 }
 
 async function fetchWithRetry(url: string, token: string) {
