@@ -6,6 +6,7 @@ export type CurrentUser = {
   displayName: string;
   email: string;
   authProvider: "supabase" | "site-owner";
+  identityProvider?: string;
 };
 
 export async function getCurrentUser(): Promise<CurrentUser | null> {
@@ -19,6 +20,7 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
         supabaseUser.email,
       email: supabaseUser.email,
       authProvider: "supabase",
+      identityProvider: supabaseUser.app_metadata?.provider,
     };
   }
 

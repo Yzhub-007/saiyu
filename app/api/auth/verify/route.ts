@@ -1,9 +1,9 @@
-import { isSupabaseConfigured, sessionCookieHeaders, verifyEmailOtp } from "@/lib/supabase-auth";
+import { isEmailOtpEnabled, sessionCookieHeaders, verifyEmailOtp } from "@/lib/supabase-auth";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export async function POST(request: Request) {
-  if (!isSupabaseConfigured()) {
+  if (!isEmailOtpEnabled()) {
     return Response.json({ error: "email_login_not_configured" }, { status: 503 });
   }
   const body = (await request.json().catch(() => ({}))) as { email?: string; token?: string };

@@ -6,6 +6,7 @@ const REFRESH_COOKIE = "saiyu-sb-refresh";
 type SupabaseUser = {
   id: string;
   email?: string;
+  app_metadata?: { provider?: string };
   user_metadata?: { full_name?: string; name?: string };
 };
 
@@ -18,6 +19,25 @@ export type SupabaseSession = {
 
 export function isSupabaseConfigured() {
   return Boolean(getConfig());
+}
+
+export function isEmailOtpEnabled() {
+  return isSupabaseConfigured() && process.env.EMAIL_OTP_ENABLED?.trim().toLowerCase() === "true";
+}
+
+export function isGoogleOAuthEnabled() {
+  return isSupabaseConfigured() && process.env.GOOGLE_OAUTH_ENABLED?.trim().toLowerCase() === "true";
+}
+
+export function getGoogleOAuthUrl(request: Request, next = "/account") {
+  const config = requireConfig();
+  const siteUrl = trustedSiteUrl(request);
+  const callback = new URL("/auth/callback", siteUrl);
+  callback.searchParams.set("next", safeRelativePath(next));
+  const authorize = new URL(`${config.url}/auth/v1/authorize`);
+  authorize.searchParams.set("provider", "google");
+  authorize.searchParams.set("redirect_to", callback.toString());
+  return authorize.toString();
 }
 
 export async function requestEmailOtp(email: string) {
@@ -39,6 +59,25 @@ export async function verifyEmailOtp(email: string, token: string): Promise<Supa
   });
   await assertOk(response, "otp_verification_failed");
   return (await response.json()) as SupabaseSession;
+}
+
+export async function createSessionFromOAuthTokens(
+  accessToken: string,
+  refreshToken: string,
+  expiresIn: number,
+): Promise<SupabaseSession> {
+  const config = requireConfig();
+  const response = await fetch(`${config.url}/auth/v1/user`, {
+    headers: { apikey: config.key, authorization: `Bearer ${accessToken}` },
+  });
+  await assertOk(response, "oauth_session_invalid");
+  const user = (await response.json()) as SupabaseUser;
+  return {
+    access_token: accessToken,
+    refresh_token: refreshToken,
+    expires_in: Math.min(Math.max(60, expiresIn || 3600), 60 * 60 * 24),
+    user,
+  };
 }
 
 export async function refreshSupabaseSession(refreshToken: string): Promise<SupabaseSession> {
@@ -106,6 +145,17 @@ function requireConfig() {
   const config = getConfig();
   if (!config) throw new Error("supabase_not_configured");
   return config;
+}
+
+function trustedSiteUrl(request: Request) {
+  const configured = process.env.SITE_URL?.trim();
+  if (configured) return new URL(configured);
+  return new URL(request.url).origin;
+}
+
+export function safeRelativePath(value?: string | null) {
+  if (!value || !value.startsWith("/") || value.startsWith("//")) return "/account";
+  return value;
 }
 
 function authHeaders(key: string) {

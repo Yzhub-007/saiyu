@@ -1,11 +1,11 @@
-import { requestEmailOtp, isSupabaseConfigured } from "@/lib/supabase-auth";
+import { requestEmailOtp, isEmailOtpEnabled } from "@/lib/supabase-auth";
 import { verifyTurnstile } from "@/lib/turnstile";
 
 const recentRequests = new Map<string, number>();
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export async function POST(request: Request) {
-  if (!isSupabaseConfigured()) {
+  if (!isEmailOtpEnabled()) {
     return Response.json({ error: "email_login_not_configured" }, { status: 503 });
   }
 
