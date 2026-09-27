@@ -58,11 +58,18 @@ export class PandaScoreAdapter implements MatchSourceAdapter {
   }
 
   async listAll(): Promise<SourceRecord<Match>[]> {
+    const kinds = ["running", "upcoming", "past"] as const;
     const collections = await Promise.allSettled([
       this.fetchCollection("running"),
       this.fetchCollection("upcoming"),
       this.fetchCollection("past", 50),
     ]);
+    const failures = collections.flatMap((result, index) =>
+      result.status === "rejected"
+        ? [`${kinds[index]}: ${safeErrorMessage(result.reason)}`]
+        : [],
+    );
+    if (failures.length) console.warn(`PandaScore collection failures: ${failures.join("; ")}`);
     const rows = collections.flatMap((result) =>
       result.status === "fulfilled" ? result.value : [],
     );
@@ -228,6 +235,14 @@ async function fetchWithRetry(url: string, token: string) {
         headers: { authorization: `Bearer ${token}`, accept: "application/json" },
         signal: AbortSignal.timeout(20_000),
       });
+      if (response.status === 401 || response.status === 403) {
+        const fallbackUrl = new URL(url);
+        fallbackUrl.searchParams.set("token", token);
+        return fetch(fallbackUrl, {
+          headers: { accept: "application/json" },
+          signal: AbortSignal.timeout(20_000),
+        });
+      }
       if (attempt === 0 && (response.status === 429 || response.status >= 500)) continue;
       return response;
     } catch (error) {
@@ -236,4 +251,9 @@ async function fetchWithRetry(url: string, token: string) {
     }
   }
   throw lastError instanceof Error ? lastError : new Error("PandaScore request failed");
+}
+
+function safeErrorMessage(error: unknown) {
+  const message = error instanceof Error ? error.message : "upstream unavailable";
+  return message.replace(/token=[^&\s]+/gi, "token=[redacted]").slice(0, 160);
 }

@@ -38,6 +38,7 @@ export async function listMatches(filters: MatchFilters = {}): Promise<{ data: M
         meta: { source: "pandascore", licensed: true, generatedAt, stale: false },
       };
     } catch (error) {
+      console.error("PandaScore refresh failed", safeMessage(error));
       if (memoryCache?.matches.length) {
         return {
           data: applyFilters(memoryCache.matches, filters),
