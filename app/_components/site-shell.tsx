@@ -5,8 +5,8 @@ import { Button } from "@/components/ui/button";
 const links = [
   { href: "/", label: "总览", icon: LayoutDashboard },
   { href: "/schedule", label: "赛程", icon: CalendarDays },
-  { href: "/tournaments/worlds-2026", label: "赛事", icon: Trophy },
-  { href: "/teams/edg", label: "战队", icon: Users },
+  { href: "/tournaments", label: "赛事", icon: Trophy },
+  { href: "/teams", label: "战队", icon: Users },
 ];
 
 export function SiteShell({ children, active }: { children: React.ReactNode; active?: string }) {
@@ -23,9 +23,9 @@ export function SiteShell({ children, active }: { children: React.ReactNode; act
             <Button variant="ghost" asChild className={active === "战力" ? "bg-white/[0.06] text-white" : "text-zinc-500 hover:bg-white/[0.04] hover:text-white"}><a href="/rankings">战力</a></Button>
           </nav>
           <div className="ml-auto flex items-center gap-2">
-            <Button variant="outline" className="hidden border-white/10 bg-transparent text-zinc-500 hover:bg-white/[0.05] hover:text-white lg:flex"><Search /> 搜索赛事 / 战队</Button>
-            <Button variant="ghost" size="icon" aria-label="通知" className="text-zinc-500 hover:bg-white/[0.05] hover:text-white"><Bell /></Button>
-            <Button asChild className="bg-[#d8ff3e] font-bold text-[#10140d] hover:bg-[#c6ed2f]"><a href="/account">登录</a></Button>
+            <Button asChild variant="outline" className="hidden border-white/10 bg-transparent text-zinc-500 hover:bg-white/[0.05] hover:text-white lg:flex"><a href="/search"><Search /> 搜索赛事 / 战队</a></Button>
+            <Button asChild variant="ghost" size="icon" aria-label="通知" className="text-zinc-500 hover:bg-white/[0.05] hover:text-white"><a href="/notifications"><Bell /></a></Button>
+            <Button asChild className="bg-[#d8ff3e] font-bold text-[#10140d] hover:bg-[#c6ed2f]"><a href="/account">账户</a></Button>
           </div>
         </div>
         <nav className="flex overflow-x-auto border-t border-white/[0.06] px-3 md:hidden" aria-label="移动端主导航">
@@ -34,7 +34,7 @@ export function SiteShell({ children, active }: { children: React.ReactNode; act
         </nav>
       </header>
       {children}
-      <footer className="mt-12 border-t border-white/[0.07] px-4 py-7 text-center text-xs leading-6 text-zinc-600">赛域 · 授权数据优先 · 直播仅跳转官方平台 · 战力指数不代表胜率</footer>
+      <footer className="mt-12 border-t border-white/[0.07] px-4 py-7 text-center text-xs leading-6 text-zinc-600"><p>赛域 · 授权数据优先 · 直播仅跳转官方平台 · 战力指数不代表胜率</p><p className="mt-1"><a className="hover:text-zinc-300" href="/privacy">隐私政策</a><span className="mx-2">·</span><a className="hover:text-zinc-300" href="/terms">服务条款</a></p></footer>
     </div>
   );
 }

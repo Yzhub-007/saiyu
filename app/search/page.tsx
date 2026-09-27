@@ -1,0 +1,22 @@
+import { Search } from "lucide-react";
+import { SiteShell, TeamMark } from "../_components/site-shell";
+import { listMatches, listTeams, listTournaments } from "@/lib/matches-service";
+
+export const dynamic = "force-dynamic";
+export const metadata = { title: "搜索｜赛域", description: "搜索已收录的电竞比赛、赛事和战队。" };
+
+export default async function SearchPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
+  const query = ((await searchParams).q ?? "").trim();
+  const normalized = query.toLocaleLowerCase("zh-CN");
+  const [{ data: matches }, teams, tournaments] = await Promise.all([listMatches(), listTeams(), listTournaments()]);
+  const matchResults = normalized ? matches.filter((match) => [match.teamA, match.teamB, match.league, match.gameName, match.stage].some((value) => value.toLocaleLowerCase("zh-CN").includes(normalized))).slice(0, 20) : [];
+  const teamResults = normalized ? teams.filter((team) => `${team.name} ${team.short} ${team.gameName}`.toLocaleLowerCase("zh-CN").includes(normalized)).slice(0, 12) : [];
+  const tournamentResults = normalized ? tournaments.filter((tournament) => `${tournament.name} ${tournament.gameName}`.toLocaleLowerCase("zh-CN").includes(normalized)).slice(0, 12) : [];
+  const total = matchResults.length + teamResults.length + tournamentResults.length;
+
+  return <SiteShell><main className="mx-auto max-w-[1100px] px-4 py-8 md:px-6"><p className="text-xs font-semibold tracking-[0.16em] text-[#9ab529]">SEARCH</p><h1 className="mt-2 text-3xl font-black text-white">搜索比赛、赛事与战队</h1><form className="relative mt-6"><Search className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-zinc-600" /><input autoFocus name="q" defaultValue={query} placeholder="输入战队、赛事或项目名称" className="h-14 w-full rounded-2xl border border-white/[0.1] bg-[#101419] pl-12 pr-28 text-white outline-none transition placeholder:text-zinc-700 focus:border-[#d8ff3e]/40" /><button className="absolute right-2 top-2 h-10 rounded-xl bg-[#d8ff3e] px-5 text-sm font-bold text-[#10140d]">搜索</button></form>{!query ? <div className="mt-6 rounded-2xl border border-white/[0.08] bg-[#101419] p-8 text-sm leading-7 text-zinc-500">输入关键词后，将从当前正式数据中检索；不会展示未确认的历史资料或演示内容。</div> : <div className="mt-6 space-y-6"><p className="text-sm text-zinc-600">“{query}”共找到 {total} 项结果</p>{teamResults.length > 0 && <ResultSection title="战队"><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{teamResults.map((team) => <a key={team.id} href={`/teams/${team.id}`} className="flex items-center gap-3 rounded-xl border border-white/[0.07] bg-black/10 p-4 hover:border-white/[0.16]"><TeamMark label={team.short} color={team.color} /><div className="min-w-0"><p className="truncate font-bold text-zinc-200">{team.name}</p><p className="mt-1 text-xs text-zinc-600">{team.gameName} · {team.matches.length} 场记录</p></div></a>)}</div></ResultSection>}{tournamentResults.length > 0 && <ResultSection title="赛事"><div className="grid gap-3 sm:grid-cols-2">{tournamentResults.map((tournament) => <a key={tournament.id} href={`/tournaments/${tournament.id}`} className="rounded-xl border border-white/[0.07] bg-black/10 p-4 hover:border-white/[0.16]"><p className="font-bold text-zinc-200">{tournament.name}</p><p className="mt-1 text-xs text-zinc-600">{tournament.gameName} · {tournament.matches.length} 场比赛 · {tournament.teams.length} 支战队</p></a>)}</div></ResultSection>}{matchResults.length > 0 && <ResultSection title="比赛"><div className="overflow-hidden rounded-xl border border-white/[0.07]">{matchResults.map((match) => <a key={match.id} href={`/matches/${match.id}`} className="flex flex-wrap items-center justify-between gap-3 border-b border-white/[0.07] bg-black/10 p-4 hover:bg-white/[0.03]"><div><p className="font-bold text-zinc-200">{match.teamA} <span className="mx-2 text-zinc-700">vs</span> {match.teamB}</p><p className="mt-1 text-xs text-zinc-600">{match.league} · {match.stage}</p></div><time className="text-xs text-zinc-500">{new Date(match.startsAt).toLocaleString("zh-CN", { dateStyle: "medium", timeStyle: "short" })}</time></a>)}</div></ResultSection>}{total === 0 && <div className="rounded-2xl border border-white/[0.08] bg-[#101419] p-10 text-center text-sm text-zinc-600">当前正式数据中没有匹配项，请尝试战队简称或英文赛事名。</div>}</div>}</main></SiteShell>;
+}
+
+function ResultSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return <section className="rounded-2xl border border-white/[0.08] bg-[#101419] p-5"><h2 className="mb-4 font-bold text-white">{title}</h2>{children}</section>;
+}

@@ -1,4 +1,5 @@
 import { requestEmailOtp, isSupabaseConfigured } from "@/lib/supabase-auth";
+import { verifyTurnstile } from "@/lib/turnstile";
 
 const recentRequests = new Map<string, number>();
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -8,11 +9,14 @@ export async function POST(request: Request) {
     return Response.json({ error: "email_login_not_configured" }, { status: 503 });
   }
 
-  const body = (await request.json().catch(() => ({}))) as { email?: string };
+  const body = (await request.json().catch(() => ({}))) as { email?: string; captchaToken?: string };
   const email = body.email?.trim().toLowerCase();
   if (!email || email.length > 254 || !EMAIL_PATTERN.test(email)) {
     return Response.json({ error: "invalid_email" }, { status: 400 });
   }
+
+  const remoteIp = request.headers.get("cf-connecting-ip") ?? request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
+  if (!await verifyTurnstile(body.captchaToken, remoteIp)) return Response.json({ error: "captcha_required" }, { status: 400 });
 
   const key = await throttleKey(request, email);
   const lastRequest = recentRequests.get(key) ?? 0;

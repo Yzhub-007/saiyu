@@ -18,6 +18,7 @@ type MatchFilters = {
 
 let memoryCache: { expiresAt: number; matches: Match[] } | null = null;
 const CACHE_MS = 45_000;
+const supportedGames = new Set(["lol", "val", "cs2", "dota", "kog", "pel", "pubg", "mlbb"]);
 
 export function isPandaScoreConfigured() {
   return Boolean(process.env.PANDASCORE_TOKEN?.trim());
@@ -33,11 +34,23 @@ export async function listMatches(filters: MatchFilters = {}): Promise<{ data: M
         meta: { source: "pandascore", licensed: true, generatedAt, stale: false },
       };
     } catch (error) {
+      if (memoryCache?.matches.length) {
+        return {
+          data: applyFilters(memoryCache.matches, filters),
+          meta: {
+            source: "pandascore",
+            licensed: true,
+            generatedAt,
+            stale: true,
+            warning: safeMessage(error),
+          },
+        };
+      }
       return {
-        data: applyFilters(demoMatches, filters),
+        data: [],
         meta: {
-          source: "demo",
-          licensed: false,
+          source: "pandascore",
+          licensed: true,
           generatedAt,
           stale: true,
           warning: safeMessage(error),
@@ -59,14 +72,6 @@ export async function listMatches(filters: MatchFilters = {}): Promise<{ data: M
 }
 
 export async function findMatch(id: string): Promise<{ data: Match | null; meta: MatchDataMeta }> {
-  const demo = getMatch(id);
-  if (demo) {
-    return {
-      data: demo,
-      meta: { source: "demo", licensed: false, generatedAt: new Date().toISOString(), stale: false },
-    };
-  }
-
   if (isPandaScoreConfigured() && id.startsWith("panda-")) {
     try {
       const record = await new PandaScoreAdapter(process.env.PANDASCORE_TOKEN!).getMatch(id);
@@ -88,6 +93,16 @@ export async function findMatch(id: string): Promise<{ data: Match | null; meta:
     }
   }
 
+  if (!isPandaScoreConfigured()) {
+    const demo = getMatch(id);
+    if (demo) {
+      return {
+        data: demo,
+        meta: { source: "demo", licensed: false, generatedAt: new Date().toISOString(), stale: false },
+      };
+    }
+  }
+
   return {
     data: null,
     meta: { source: "demo", licensed: false, generatedAt: new Date().toISOString(), stale: false },
@@ -98,9 +113,63 @@ async function loadPandaMatches() {
   if (memoryCache && memoryCache.expiresAt > Date.now()) return memoryCache.matches;
   const rows = await new PandaScoreAdapter(process.env.PANDASCORE_TOKEN!).listAll();
   const unique = new Map(rows.map((row) => [row.data.id, row.data]));
-  const matches = [...unique.values()].sort((a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt));
+  const matches = [...unique.values()]
+    .filter((match) => supportedGames.has(match.game))
+    .sort((a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt));
   memoryCache = { expiresAt: Date.now() + CACHE_MS, matches };
   return matches;
+}
+
+export type TeamSummary = {
+  id: string;
+  name: string;
+  short: string;
+  game: string;
+  gameName: string;
+  color: string;
+  matches: Match[];
+};
+
+export type TournamentSummary = {
+  id: string;
+  name: string;
+  game: string;
+  gameName: string;
+  matches: Match[];
+  teams: Array<{ id: string; name: string; short: string; color: string }>;
+};
+
+export async function listTeams(): Promise<TeamSummary[]> {
+  const { data } = await listMatches();
+  const teams = new Map<string, Omit<TeamSummary, "matches">>();
+  for (const match of data) {
+    if (match.teamAId !== "tbd-a") teams.set(match.teamAId, { id: match.teamAId, name: match.teamA, short: match.teamAShort, game: match.game, gameName: match.gameName, color: match.teamAColor });
+    if (match.teamBId !== "tbd-b") teams.set(match.teamBId, { id: match.teamBId, name: match.teamB, short: match.teamBShort, game: match.game, gameName: match.gameName, color: match.teamBColor });
+  }
+  return [...teams.values()].map((team) => ({ ...team, matches: data.filter((match) => match.teamAId === team.id || match.teamBId === team.id) }));
+}
+
+export async function findTeam(id: string) {
+  return (await listTeams()).find((team) => team.id === id) ?? null;
+}
+
+export async function listTournaments(): Promise<TournamentSummary[]> {
+  const { data } = await listMatches();
+  const groups = new Map<string, Match[]>();
+  for (const match of data) groups.set(match.tournamentId, [...(groups.get(match.tournamentId) ?? []), match]);
+  return [...groups.entries()].map(([id, tournamentMatches]) => {
+    const first = tournamentMatches[0];
+    const teams = new Map<string, { id: string; name: string; short: string; color: string }>();
+    for (const match of tournamentMatches) {
+      if (match.teamAId !== "tbd-a") teams.set(match.teamAId, { id: match.teamAId, name: match.teamA, short: match.teamAShort, color: match.teamAColor });
+      if (match.teamBId !== "tbd-b") teams.set(match.teamBId, { id: match.teamBId, name: match.teamB, short: match.teamBShort, color: match.teamBColor });
+    }
+    return { id, name: first.league, game: first.game, gameName: first.gameName, matches: tournamentMatches, teams: [...teams.values()] };
+  });
+}
+
+export async function findTournament(id: string) {
+  return (await listTournaments()).find((tournament) => tournament.id === id) ?? null;
 }
 
 function applyFilters(data: Match[], filters: MatchFilters) {

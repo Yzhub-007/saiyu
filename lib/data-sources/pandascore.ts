@@ -94,9 +94,7 @@ export class PandaScoreAdapter implements MatchSourceAdapter {
 
   private request(path: string) {
     if (!this.token) throw new Error("PANDASCORE_TOKEN is not configured");
-    return fetch(`https://api.pandascore.co${path}`, {
-      headers: { authorization: `Bearer ${this.token}`, accept: "application/json" },
-    });
+    return cachedFetch(`https://api.pandascore.co${path}`, this.token);
   }
 
   private toRecord(row: PandaMatch, fetchedAt: string): SourceRecord<Match> {
@@ -202,4 +200,23 @@ function platformFor(url?: string) {
   if (url.includes("douyu.com")) return "斗鱼直播";
   if (url.includes("bilibili.com")) return "哔哩哔哩";
   return "官方直播";
+}
+
+async function cachedFetch(url: string, token: string) {
+  const cacheStorage = globalThis.caches as CacheStorage & { default?: Cache };
+  const edgeCache = cacheStorage?.default;
+  const cacheKey = new Request(url, { method: "GET" });
+  const cached = edgeCache ? await edgeCache.match(cacheKey) : undefined;
+  if (cached) return cached;
+
+  const response = await fetch(url, {
+    headers: { authorization: `Bearer ${token}`, accept: "application/json" },
+    signal: AbortSignal.timeout(8_000),
+  });
+  if (edgeCache && response.ok) {
+    const stored = new Response(response.clone().body, response);
+    stored.headers.set("cache-control", "public, max-age=45");
+    await edgeCache.put(cacheKey, stored).catch(() => undefined);
+  }
+  return response;
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Bell, CalendarDays, ChevronRight, Clock3, Flame, LayoutDashboard, Radio, Search, ShieldCheck, Swords, Trophy, Users } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -21,12 +21,6 @@ const games = [
   { id: "mlbb", short: "ML", name: "MLBB", tone: "bg-[#152c3b] text-[#67ccff]" },
 ];
 
-const rankings = [
-  { rank: 1, name: "Gen.G", game: "英雄联盟", score: 94, trend: "+2.4" },
-  { rank: 2, name: "Team Vitality", game: "CS2", score: 91, trend: "+1.1" },
-  { rank: 3, name: "EDward Gaming", game: "无畏契约", score: 88, trend: "+3.8" },
-];
-
 function TeamMark({ label, color }: { label: string; color: string }) {
   return <span className="grid size-10 shrink-0 place-items-center rounded-[12px] border border-white/10 text-xs font-black tracking-tight shadow-[inset_0_0_0_1px_rgb(255_255_255/5%)]" style={{ background: `linear-gradient(145deg, ${color}35, #101418 76%)`, color }}>{label}</span>;
 }
@@ -34,7 +28,7 @@ function TeamMark({ label, color }: { label: string; color: string }) {
 function MatchRow({ match }: { match: Match }) {
   return (
     <a href={`/matches/${match.id}`} className="group grid w-full grid-cols-[116px_minmax(0,1fr)_auto] items-center gap-4 border-b border-white/[0.07] px-4 py-4 text-left transition hover:bg-white/[0.035] max-md:grid-cols-[86px_minmax(0,1fr)]">
-      <div><p className="text-sm font-semibold text-white">{match.timeLabel}</p><p className="mt-1 text-xs text-zinc-500">{match.bestOf} · {match.gameName}</p></div>
+      <div><p className="text-sm font-semibold text-white">{localTime(match)}</p><p className="mt-1 text-xs text-zinc-500">{match.bestOf} · {match.gameName}</p></div>
       <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_34px_minmax(0,1fr)] items-center gap-3">
         <div className="flex min-w-0 items-center justify-end gap-3"><span className="truncate text-sm font-semibold text-zinc-200">{match.teamA}</span><TeamMark label={match.teamAShort} color={match.teamAColor} /></div>
         <span className="text-center font-mono text-sm text-zinc-600">VS</span>
@@ -48,8 +42,26 @@ function MatchRow({ match }: { match: Match }) {
 export function EsportsDashboard({ initialMatches, dataSource }: { initialMatches: Match[]; dataSource: "pandascore" | "demo" }) {
   const matches = initialMatches;
   const [game, setGame] = useState("all");
+  const [today, setToday] = useState<Date | null>(null);
+  const [selectedDay, setSelectedDay] = useState<string | null>(null);
+  const [follows, setFollows] = useState<Array<{ entityType: string; entityId: string }>>([]);
+  const [followsLoaded, setFollowsLoaded] = useState(false);
   const filtered = useMemo(() => matches.filter((match) => game === "all" || match.game === game), [game, matches]);
-  const live = matches.find((match) => match.status === "live") ?? matches[0];
+  const liveMatches = filtered.filter((match) => match.status === "live");
+  const upcoming = filtered.filter((match) => match.status === "upcoming" && (!selectedDay || dayKey(new Date(match.startsAt)) === selectedDay));
+  const live = liveMatches[0] ?? filtered.find((match) => match.status === "upcoming") ?? filtered[0];
+  const followed = filtered.filter((match) => follows.some((item) => (item.entityType === "team" && (item.entityId === match.teamAId || item.entityId === match.teamBId)) || (item.entityType === "tournament" && item.entityId === match.tournamentId) || (item.entityType === "game" && item.entityId === match.game)));
+  const days = today ? Array.from({ length: 4 }, (_, index) => { const value = new Date(today); value.setHours(0, 0, 0, 0); value.setDate(value.getDate() + index); return value; }) : [];
+
+  useEffect(() => {
+    const dateTimer = window.setTimeout(() => {
+      const value = new Date();
+      setToday(value);
+      setSelectedDay(dayKey(value));
+    }, 0);
+    fetch("/api/v1/follows").then(async (response) => response.ok ? response.json() as Promise<{ data?: Array<{ entityType: string; entityId: string }> }> : null).then((body) => { if (body?.data) setFollows(body.data); setFollowsLoaded(true); }).catch(() => setFollowsLoaded(true));
+    return () => window.clearTimeout(dateTimer);
+  }, []);
 
   return (
     <SidebarProvider defaultOpen>
@@ -87,41 +99,39 @@ export function EsportsDashboard({ initialMatches, dataSource }: { initialMatche
         <header className="sticky top-0 z-30 flex h-[74px] items-center gap-3 border-b border-white/[0.08] bg-[#0b0e11]/90 px-4 backdrop-blur-xl md:px-6">
           <SidebarTrigger className="text-zinc-400 hover:bg-white/[0.06] hover:text-white" />
           <nav className="hidden items-center gap-1 lg:flex" aria-label="主导航">
-            {[[LayoutDashboard, "总览", "/"], [CalendarDays, "赛程", "/schedule"], [Trophy, "赛事", "/tournaments/worlds-2026"], [Users, "战队", "/teams/edg"]].map(([Icon, label, href], index) => { const NavIcon = Icon as typeof LayoutDashboard; return <Button key={label as string} variant="ghost" asChild className={index === 0 ? "bg-white/[0.06] text-white" : "text-zinc-500 hover:bg-white/[0.04] hover:text-white"}><a href={href as string}><NavIcon />{label as string}</a></Button>; })}
+            {[[LayoutDashboard, "总览", "/"], [CalendarDays, "赛程", "/schedule"], [Trophy, "赛事", "/tournaments"], [Users, "战队", "/teams"]].map(([Icon, label, href], index) => { const NavIcon = Icon as typeof LayoutDashboard; return <Button key={label as string} variant="ghost" asChild className={index === 0 ? "bg-white/[0.06] text-white" : "text-zinc-500 hover:bg-white/[0.04] hover:text-white"}><a href={href as string}><NavIcon />{label as string}</a></Button>; })}
           </nav>
           <div className="ml-auto flex items-center gap-2">
-            <Button variant="outline" className="hidden border-white/10 bg-transparent text-zinc-400 hover:bg-white/[0.05] hover:text-white sm:flex"><Search /> 搜索赛事 / 战队</Button>
-            <Button variant="ghost" size="icon" aria-label="通知" className="text-zinc-400 hover:bg-white/[0.05] hover:text-white"><Bell /></Button>
-            <Button asChild className="bg-[#d8ff3e] font-bold text-[#11150d] hover:bg-[#c6ed2f]"><a href="/account">登录</a></Button>
+            <Button asChild variant="outline" className="hidden border-white/10 bg-transparent text-zinc-400 hover:bg-white/[0.05] hover:text-white sm:flex"><a href="/search"><Search /> 搜索赛事 / 战队</a></Button>
+            <Button asChild variant="ghost" size="icon" aria-label="通知" className="text-zinc-400 hover:bg-white/[0.05] hover:text-white"><a href="/notifications"><Bell /></a></Button>
+            <Button asChild className="bg-[#d8ff3e] font-bold text-[#11150d] hover:bg-[#c6ed2f]"><a href="/account">账户</a></Button>
           </div>
         </header>
 
         <div className="mx-auto w-full max-w-[1520px] px-4 py-5 md:px-6 lg:py-7">
           <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
-            <div><div className="mb-2 flex items-center gap-2 text-xs text-zinc-500"><ShieldCheck className="size-3.5 text-[#8fa827]" /> {dataSource === "pandascore" ? "PandaScore 授权聚合数据" : "演示数据"} · 本地时区 UTC+8 · 自动更新</div><h1 className="text-2xl font-black tracking-tight text-white md:text-3xl">今天看什么</h1><p className="mt-1 text-sm text-zinc-500">已汇总 {matches.length} 场重点赛事</p></div>
-            <div className="flex gap-1 rounded-xl border border-white/[0.07] bg-[#0e1216] p-1">
-              {["周五 25", "今天 26", "周日 27", "周一 28"].map((day, index) => <button key={day} className={`rounded-lg px-3 py-2 text-xs font-semibold transition ${index === 1 ? "bg-[#d8ff3e] text-[#10140d]" : "text-zinc-500 hover:text-white"}`}>{day}</button>)}
-            </div>
+            <div><div className="mb-2 flex items-center gap-2 text-xs text-zinc-500"><ShieldCheck className="size-3.5 text-[#8fa827]" /> {dataSource === "pandascore" ? "PandaScore 授权聚合数据" : "演示数据"} · 按浏览器本地时区显示 · 自动更新</div><h1 className="text-2xl font-black tracking-tight text-white md:text-3xl">今天看什么</h1><p className="mt-1 text-sm text-zinc-500">已汇总 {matches.length} 场重点赛事</p></div>
+            {days.length > 0 && <div className="flex gap-1 overflow-x-auto rounded-xl border border-white/[0.07] bg-[#0e1216] p-1">{days.map((day, index) => { const key = dayKey(day); return <button key={key} onClick={() => setSelectedDay(key)} className={`shrink-0 rounded-lg px-3 py-2 text-xs font-semibold transition ${selectedDay === key ? "bg-[#d8ff3e] text-[#10140d]" : "text-zinc-500 hover:text-white"}`}>{index === 0 ? "今天" : day.toLocaleDateString("zh-CN", { weekday: "short" })} {day.getDate()}</button>; })}</div>}
           </div>
 
           <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
             <div className="min-w-0 space-y-5">
-              <section className="overflow-hidden rounded-2xl border border-[#d8ff3e]/20 bg-[radial-gradient(circle_at_84%_10%,rgba(216,255,62,0.08),transparent_34%),#101419] shadow-[0_20px_70px_rgb(0_0_0/20%)]">
+              {live ? <section className="overflow-hidden rounded-2xl border border-[#d8ff3e]/20 bg-[radial-gradient(circle_at_84%_10%,rgba(216,255,62,0.08),transparent_34%),#101419] shadow-[0_20px_70px_rgb(0_0_0/20%)]">
                 <div className="flex items-center justify-between border-b border-white/[0.07] px-5 py-3"><div className="flex items-center gap-2"><Badge className="gap-1.5 border border-[#ff5468]/20 bg-[#ff5468]/10 text-[#ff7180]"><span className="size-1.5 animate-pulse rounded-full bg-[#ff5468]" /> {live.status === "live" ? "LIVE" : "NEXT"}</Badge><span className="text-sm font-semibold text-zinc-300">{live.league}</span></div><span className="text-xs text-zinc-500">{live.freshness}</span></div>
                 <div className="grid items-center gap-5 px-5 py-7 md:grid-cols-[1fr_auto_1fr] md:px-10">
-                  <div className="flex items-center justify-center gap-4 md:justify-end"><div className="text-right"><p className="text-lg font-bold text-white md:text-xl">{live.teamA}</p><p className="mt-1 text-xs text-zinc-500">中国赛区 · 战力 88</p></div><TeamMark label={live.teamAShort} color={live.teamAColor} /></div>
+                  <div className="flex items-center justify-center gap-4 md:justify-end"><div className="text-right"><p className="text-lg font-bold text-white md:text-xl">{live.teamA}</p><p className="mt-1 text-xs text-zinc-500">{live.gameName} · 战力样本待补充</p></div><TeamMark label={live.teamAShort} color={live.teamAColor} /></div>
                   <div className="text-center"><div className="font-mono text-4xl font-black tracking-tight text-white"><span>{live.scoreA ?? "–"}</span><span className="mx-3 text-zinc-700">:</span><span>{live.scoreB ?? "–"}</span></div><p className="mt-2 text-xs font-semibold text-[#d8ff3e]">{live.timeLabel}</p><p className="mt-1 text-xs text-zinc-600">{live.detail}</p></div>
-                  <div className="flex items-center justify-center gap-4 md:justify-start"><TeamMark label={live.teamBShort} color={live.teamBColor} /><div><p className="text-lg font-bold text-white md:text-xl">{live.teamB}</p><p className="mt-1 text-xs text-zinc-500">太平洋赛区 · 战力 86</p></div></div>
+                  <div className="flex items-center justify-center gap-4 md:justify-start"><TeamMark label={live.teamBShort} color={live.teamBColor} /><div><p className="text-lg font-bold text-white md:text-xl">{live.teamB}</p><p className="mt-1 text-xs text-zinc-500">{live.stage}</p></div></div>
                 </div>
                 <div className="flex flex-wrap items-center justify-center gap-3 border-t border-white/[0.07] bg-black/10 px-5 py-4">{live.streamUrl && <Button asChild className="bg-[#d8ff3e] font-bold text-[#0f140d] hover:bg-[#c7ed33]"><a href={live.streamUrl} target="_blank" rel="noreferrer"><Radio /> 前往官方直播</a></Button>}<Button asChild variant="outline" className="border-white/10 bg-white/[0.03] text-zinc-200 hover:bg-white/[0.07] hover:text-white"><a href={`/matches/${live.id}`}><Swords /> 查看比赛详情</a></Button></div>
-              </section>
+              </section> : <div className="rounded-2xl border border-white/[0.08] bg-[#101419]"><EmptyState label="当前筛选下暂无可展示的比赛。" /></div>}
 
               <section className="overflow-hidden rounded-2xl border border-white/[0.08] bg-[#101419]">
                 <Tabs defaultValue="upcoming">
-                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/[0.07] px-4 py-3"><TabsList variant="line" className="gap-5"><TabsTrigger value="upcoming" className="px-0 text-sm data-[state=active]:text-white">即将开始 <span className="text-zinc-600">11</span></TabsTrigger><TabsTrigger value="live" className="px-0 text-sm data-[state=active]:text-white">直播中 <span className="text-[#ff7180]">1</span></TabsTrigger><TabsTrigger value="following" className="px-0 text-sm data-[state=active]:text-white">我的关注</TabsTrigger></TabsList><Button asChild variant="ghost" size="sm" className="text-zinc-500 hover:bg-white/[0.04] hover:text-white"><a href="/schedule">完整赛程 <ChevronRight /></a></Button></div>
-                  <TabsContent value="upcoming" className="m-0">{filtered.filter((m) => m.status === "upcoming").length ? filtered.filter((m) => m.status === "upcoming").map((match) => <MatchRow key={match.id} match={match} />) : <EmptyState />}</TabsContent>
-                  <TabsContent value="live" className="m-0"><MatchRow match={live} /></TabsContent>
-                  <TabsContent value="following" className="m-0"><EmptyState label="登录后，这里会显示你关注的战队与赛事。" /></TabsContent>
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/[0.07] px-4 py-3"><TabsList variant="line" className="gap-5"><TabsTrigger value="upcoming" className="px-0 text-sm data-[state=active]:text-white">即将开始 <span className="text-zinc-600">{upcoming.length}</span></TabsTrigger><TabsTrigger value="live" className="px-0 text-sm data-[state=active]:text-white">直播中 <span className="text-[#ff7180]">{liveMatches.length}</span></TabsTrigger><TabsTrigger value="following" className="px-0 text-sm data-[state=active]:text-white">我的关注</TabsTrigger></TabsList><Button asChild variant="ghost" size="sm" className="text-zinc-500 hover:bg-white/[0.04] hover:text-white"><a href="/schedule">完整赛程 <ChevronRight /></a></Button></div>
+                  <TabsContent value="upcoming" className="m-0">{upcoming.length ? upcoming.map((match) => <MatchRow key={match.id} match={match} />) : <EmptyState />}</TabsContent>
+                  <TabsContent value="live" className="m-0">{liveMatches.length ? liveMatches.map((match) => <MatchRow key={match.id} match={match} />) : <EmptyState label="当前没有正在直播的比赛。" />}</TabsContent>
+                  <TabsContent value="following" className="m-0">{followed.length ? followed.map((match) => <MatchRow key={match.id} match={match} />) : <EmptyState label={followsLoaded ? "尚未关注赛事或战队，可从详情页开始关注。" : "正在读取关注内容…"} />}</TabsContent>
                 </Tabs>
               </section>
             </div>
@@ -129,12 +139,11 @@ export function EsportsDashboard({ initialMatches, dataSource }: { initialMatche
             <aside className="space-y-5">
               <section className="rounded-2xl border border-white/[0.08] bg-[#101419] p-5">
                 <div className="mb-4 flex items-center justify-between"><div><p className="text-xs font-semibold tracking-[0.14em] text-zinc-500">POWER INDEX</p><h2 className="mt-1 text-lg font-bold text-white">战力热榜</h2></div><Flame className="size-5 text-[#d8ff3e]" /></div>
-                <div className="space-y-1">{rankings.map((team) => <div key={team.name} className="grid grid-cols-[30px_1fr_auto] items-center gap-3 rounded-xl px-2 py-3 hover:bg-white/[0.035]"><span className="font-mono text-sm font-bold text-zinc-600">0{team.rank}</span><div><p className="text-sm font-bold text-zinc-200">{team.name}</p><p className="text-xs text-zinc-600">{team.game}</p></div><div className="text-right"><p className="font-mono text-lg font-black text-white">{team.score}</p><p className="text-[11px] text-[#8fa827]">{team.trend}</p></div></div>)}</div>
-                <p className="mt-3 border-t border-white/[0.07] pt-4 text-xs leading-5 text-zinc-600">根据近期状态、对手强度、地图表现与阵容稳定度计算，不代表胜率。</p>
+                <div className="rounded-xl border border-white/[0.07] bg-black/10 p-4"><p className="text-sm font-semibold text-zinc-300">正式榜单尚未发布</p><p className="mt-2 text-xs leading-5 text-zinc-600">有效系列赛和阵容数据达到门槛后才会显示分数。</p><a href="/rankings" className="mt-3 inline-flex text-xs font-semibold text-[#d8ff3e]">查看计算规则 <ChevronRight className="size-4" /></a></div>
               </section>
               <section className="rounded-2xl border border-white/[0.08] bg-[#101419] p-5">
                 <div className="flex items-center justify-between"><div><p className="text-xs font-semibold tracking-[0.14em] text-zinc-500">NEXT UP</p><h2 className="mt-1 text-lg font-bold text-white">本周焦点</h2></div><Clock3 className="size-5 text-zinc-600" /></div>
-                <div className="mt-5 border-l border-white/10 pl-4">{[["今天", "19:00", "全球总决赛 · T1 vs BLG"], ["周日", "16:00", "KPL 年度总决赛 · 胜者组"], ["周一", "00:30", "DreamLeague · 小组赛"]].map(([day, time, event], index) => <div key={event} className={`relative pb-5 ${index === 2 ? "pb-0" : ""}`}><span className="absolute -left-[21px] top-1 size-2 rounded-full border-2 border-[#101419] bg-zinc-600" /><p className="text-xs text-zinc-600">{day} · {time}</p><p className="mt-1 text-sm font-medium leading-5 text-zinc-300">{event}</p></div>)}</div>
+                <div className="mt-5 border-l border-white/10 pl-4">{matches.filter((match) => match.status === "upcoming").slice(0, 3).map((match, index, rows) => <a href={`/matches/${match.id}`} key={match.id} className={`relative block pb-5 ${index === rows.length - 1 ? "pb-0" : ""}`}><span className="absolute -left-[21px] top-1 size-2 rounded-full border-2 border-[#101419] bg-zinc-600" /><p className="text-xs text-zinc-600">{new Date(match.startsAt).toLocaleString("zh-CN", { weekday: "short", hour: "2-digit", minute: "2-digit" })}</p><p className="mt-1 text-sm font-medium leading-5 text-zinc-300">{match.league} · {match.teamAShort} vs {match.teamBShort}</p></a>)}</div>
               </section>
             </aside>
           </div>
@@ -146,6 +155,16 @@ export function EsportsDashboard({ initialMatches, dataSource }: { initialMatche
 
 function EmptyState({ label = "当前筛选下没有即将开始的比赛。" }: { label?: string }) {
   return <div className="grid min-h-40 place-items-center p-6 text-center text-sm text-zinc-600">{label}</div>;
+}
+
+function dayKey(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function localTime(match: Match) {
+  if (match.status === "live") return "进行中";
+  if (match.status === "complete") return "已结束";
+  return new Date(match.startsAt).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
 function RadarMark() {

@@ -6,6 +6,7 @@ import { isSupabaseConfigured } from "@/lib/supabase-auth";
 import { SiteShell } from "../_components/site-shell";
 import { EmailOtpForm, SupabaseLogoutButton } from "./email-otp-form";
 import { PreferencesPanel } from "./preferences-panel";
+import { isReminderDeliveryEnabled } from "@/lib/reminder-mail";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "账户与提醒｜赛域" };
@@ -13,6 +14,7 @@ export const metadata = { title: "账户与提醒｜赛域" };
 export default async function AccountPage() {
   const user = await getCurrentUser();
   const supabaseConfigured = isSupabaseConfigured();
+  const reminderEmailEnabled = isReminderDeliveryEnabled();
 
   return (
     <SiteShell>
@@ -50,7 +52,7 @@ export default async function AccountPage() {
                       <LockKeyhole className="mb-2 size-4 text-[#8fa827]" />
                       当前私有站点仍由所有者身份保护。下面可同时测试正式邮箱登录。
                     </div>
-                    <EmailOtpForm configured={supabaseConfigured} />
+                    <EmailOtpForm configured={supabaseConfigured} turnstileSiteKey={process.env.TURNSTILE_SITE_KEY?.trim()} />
                     <Button
                       variant="outline"
                       asChild
@@ -70,11 +72,11 @@ export default async function AccountPage() {
                 <p className="mt-2 text-sm leading-6 text-zinc-600">
                   无需设置密码，验证码登录后可跨设备同步关注与提醒。
                 </p>
-                <EmailOtpForm configured={supabaseConfigured} />
+                <EmailOtpForm configured={supabaseConfigured} turnstileSiteKey={process.env.TURNSTILE_SITE_KEY?.trim()} />
               </>
             )}
           </aside>
-          <PreferencesPanel signedIn={Boolean(user)} />
+          <PreferencesPanel signedIn={Boolean(user)} reminderEmailEnabled={reminderEmailEnabled} />
         </div>
       </main>
     </SiteShell>

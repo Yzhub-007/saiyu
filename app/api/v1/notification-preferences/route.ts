@@ -22,6 +22,7 @@ export async function PATCH(request: Request) {
   const input = await request.json() as Partial<typeof defaults>;
   const data = {
     userId: user.userId,
+    userEmail: user.email,
     inAppEnabled: input.inAppEnabled ?? defaults.inAppEnabled,
     emailEnabled: input.emailEnabled ?? defaults.emailEnabled,
     reminder24h: input.reminder24h ?? defaults.reminder24h,
