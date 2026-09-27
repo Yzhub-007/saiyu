@@ -40,6 +40,8 @@ const gameAliases: Record<string, { id: string; name: string }> = {
   dota2: { id: "dota", name: "Dota 2" },
   "dota-2": { id: "dota", name: "Dota 2" },
   "king-of-glory": { id: "kog", name: "王者荣耀" },
+  "honor-of-kings": { id: "kog", name: "王者荣耀" },
+  kog: { id: "kog", name: "王者荣耀" },
   pubg: { id: "pubg", name: "PUBG" },
   "pubg-mobile": { id: "pel", name: "和平精英" },
   "mobile-legends-bang-bang": { id: "mlbb", name: "MLBB" },
