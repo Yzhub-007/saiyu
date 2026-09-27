@@ -9,7 +9,7 @@ export async function POST(request: Request) {
   const body = (await request.json().catch(() => ({}))) as { email?: string; token?: string };
   const email = body.email?.trim().toLowerCase();
   const token = body.token?.trim();
-  if (!email || !EMAIL_PATTERN.test(email) || !token || !/^\d{6}$/.test(token)) {
+  if (!email || !EMAIL_PATTERN.test(email) || !token || !/^\d{6,10}$/.test(token)) {
     return Response.json({ error: "invalid_otp_payload" }, { status: 400 });
   }
 
