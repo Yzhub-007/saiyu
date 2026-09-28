@@ -1,10 +1,11 @@
 import type { Match } from "./esports-data";
+import { getExternalDataSourcesForGame } from "./external-data-sources";
 
 export type MatchDataLink = {
   label: string;
   description: string;
   url: string;
-  kind: "official" | "provider" | "subscription";
+  kind: "official" | "provider" | "subscription" | "reference";
 };
 
 export function getMatchDataLinks(match: Match): MatchDataLink[] {
@@ -17,6 +18,16 @@ export function getMatchDataLinks(match: Match): MatchDataLink[] {
       description: "核对官方赛果、公告、回放和观赛入口",
       url: officialUrl,
       kind: "official",
+    });
+  }
+
+  for (const source of getExternalDataSourcesForGame(match.game)) {
+    if (source.url === officialUrl) continue;
+    links.push({
+      label: source.label,
+      description: source.description,
+      url: source.url,
+      kind: source.sourceType === "official" ? "official" : "reference",
     });
   }
 
