@@ -35,6 +35,7 @@ const detailCache = new Map<string, MatchDetailCache>();
 const detailInFlight = new Map<string, Promise<MatchResult>>();
 const CACHE_MS = 30_000;
 const MAX_DETAIL_CACHE_SIZE = 200;
+const MAX_ARCHIVED_MATCHES = 1_000;
 const supportedGames = new Set(["lol", "val", "cs2", "dota", "kog", "pel", "pubg", "mlbb"]);
 
 export function isPandaScoreConfigured() {
@@ -76,6 +77,23 @@ export async function findMatch(id: string): Promise<{ data: Match | null; meta:
       detailCache.delete(id);
       detailCache.set(id, cached);
       return { data: cached.data, meta: cached.meta };
+    }
+    // Match collections are available on the free Fixtures plan and already
+    // contain the basic series result. Prefer that stored record before trying
+    // a detail endpoint that may require a Historical subscription.
+    const listed = await loadPandaMatches();
+    const basicMatch = listed.matches.find((match) => match.id === id);
+    if (basicMatch) {
+      return {
+        data: basicMatch,
+        meta: {
+          source: "pandascore",
+          licensed: true,
+          generatedAt: listed.fetchedAt,
+          stale: listed.stale,
+          ...(listed.warning ? { warning: listed.warning } : {}),
+        },
+      };
     }
     const pending = detailInFlight.get(id);
     if (pending) return pending;
@@ -120,13 +138,26 @@ async function loadPandaMatches(): Promise<MatchListCache> {
 
 async function refreshPandaMatches(): Promise<MatchListCache> {
   try {
+    const persisted = memoryCache?.matches.length ? null : await loadMatchSnapshot();
     const rows = await new PandaScoreAdapter(process.env.PANDASCORE_TOKEN!).listAll();
-    const unique = new Map(rows.map((row) => [row.data.id, row.data]));
-    const previousMatches = memoryCache?.matches ?? [];
-    const matches = [...unique.values()]
+    const previousMatches = memoryCache?.matches ?? persisted?.matches ?? [];
+    const unique = new Map(
+      previousMatches
+        .filter((match) => match.status === "complete")
+        .map((match) => [match.id, match]),
+    );
+    // Fresh provider data always wins; completed records that fall outside the
+    // latest API page remain in the bounded local archive.
+    for (const row of rows) unique.set(row.data.id, row.data);
+    const normalized = [...unique.values()]
       .filter((match) => supportedGames.has(match.game))
-      .map((match) => preserveTeamLogos(match, previousMatches))
-      .sort((a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt));
+      .map((match) => preserveTeamLogos(match, previousMatches));
+    const archived = normalized
+      .filter((match) => match.status === "complete")
+      .sort((a, b) => Date.parse(b.startsAt) - Date.parse(a.startsAt))
+      .slice(0, MAX_ARCHIVED_MATCHES);
+    const active = normalized.filter((match) => match.status !== "complete");
+    const matches = [...archived, ...active].sort((a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt));
     if (!matches.length) throw new Error("PandaScore returned no supported matches");
     const fetchedAt = new Date().toISOString();
     memoryCache = { expiresAt: Date.now() + CACHE_MS, matches, fetchedAt, stale: false };

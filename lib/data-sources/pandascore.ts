@@ -64,7 +64,10 @@ export class PandaScoreAdapter implements MatchSourceAdapter {
     const collections = await Promise.allSettled([
       this.fetchCollection("running"),
       this.fetchCollection("upcoming"),
-      this.fetchCollection("past", 50),
+      // The free Fixtures plan exposes past match results. Keep the largest
+      // supported page so the site can build a useful local result archive
+      // without calling paid post-match/statistics endpoints.
+      this.fetchCollection("past", 100),
     ]);
     const failures = collections.flatMap((result, index) =>
       result.status === "rejected"
