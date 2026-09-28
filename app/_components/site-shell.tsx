@@ -2,6 +2,7 @@
 import { Bell, BookOpen, CalendarDays, LayoutDashboard, Search, Trophy, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "./theme-toggle";
+import { LiquidGlass } from "./liquid-glass";
 
 export { TeamMark } from "./team-mark";
 
@@ -16,7 +17,8 @@ const links = [
 export function SiteHeader({ active, sidebarTrigger }: { active?: string; sidebarTrigger?: React.ReactNode }) {
   return <>
       <a className="skip-link" href="#main-content">跳到主要内容</a>
-      <header className="site-header glass-toolbar sticky top-0 z-40 border-b">
+      <header className="site-header sticky top-0 z-40">
+        <LiquidGlass className="header-glass">
         <div className="site-header-inner mx-auto flex h-[72px] max-w-[1480px] items-center gap-3 px-4 md:px-6">
           {sidebarTrigger}
           <a href="/" className={`mr-2 flex shrink-0 items-center gap-3 ${sidebarTrigger ? "md:hidden" : ""}`} aria-label="赛域首页">
@@ -34,10 +36,11 @@ export function SiteHeader({ active, sidebarTrigger }: { active?: string; sideba
             <Button asChild className="bg-primary font-bold text-primary-foreground hover:bg-brand-hover"><a href="/account">账户</a></Button>
           </div>
         </div>
-        <nav className="flex overflow-x-auto border-t border-border px-3 lg:hidden" aria-label="移动端主导航">
+        <nav className="mobile-navigation flex overflow-x-auto scrollbar-none px-3 lg:hidden" aria-label="移动端主导航">
           {links.map(({ href, label }) => <a key={href} href={href} aria-current={active === label ? "page" : undefined} className={`shrink-0 px-3 py-2.5 text-sm ${active === label ? "border-b-2 border-brand font-semibold text-foreground" : "text-muted-foreground"}`}>{label}</a>)}
           <a href="/rankings" aria-current={active === "战力" ? "page" : undefined} className={`shrink-0 px-3 py-2.5 text-sm ${active === "战力" ? "border-b-2 border-brand text-foreground" : "text-muted-foreground"}`}>战力</a>
         </nav>
+        </LiquidGlass>
       </header>
   </>;
 }

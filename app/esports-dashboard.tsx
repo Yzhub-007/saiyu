@@ -9,6 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { Match } from "@/lib/esports-data";
 import { WebMcpTools } from "./webmcp-tools";
 import { SiteHeader } from "./_components/site-shell";
+import { LiquidGlass } from "./_components/liquid-glass";
 import { TeamMark } from "./_components/team-mark";
 import { MatchTeamNames } from "./_components/match-team-names";
 import { FixtureRow, MatchStatus } from "./_components/fixture-row";
@@ -55,7 +56,8 @@ export function EsportsDashboard({ initialMatches, dataSource, stale: initialSta
   return (
     <SidebarProvider defaultOpen>
       <WebMcpTools onFilter={setGame} />
-      <Sidebar collapsible="icon" className="dashboard-sidebar border-r border-border bg-sidebar">
+      <Sidebar collapsible="icon" variant="floating" className="dashboard-sidebar">
+        <LiquidGlass className="sidebar-glass" contentClassName="sidebar-glass-content" weight="thick">
         <SidebarHeader className="h-[72px] justify-center border-b border-border px-3">
           <a href="/" className="flex items-center gap-3 overflow-hidden px-1" aria-label="赛域首页">
             <span className="brand-mark grid size-9 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground"><RadarMark /></span>
@@ -68,6 +70,7 @@ export function EsportsDashboard({ initialMatches, dataSource, stale: initialSta
           </SidebarMenu></SidebarGroupContent></SidebarGroup>
         </SidebarContent>
         <SidebarFooter className="border-t border-border p-3"><a href="/account" className="flex items-center gap-3 rounded-xl p-2 text-muted-foreground hover:bg-surface-hover"><Users className="size-5 shrink-0" /><span className="text-sm group-data-[collapsible=icon]:hidden">管理我的关注</span><ChevronRight className="ml-auto size-4 group-data-[collapsible=icon]:hidden" /></a></SidebarFooter>
+        </LiquidGlass>
         <SidebarRail />
       </Sidebar>
 
@@ -93,9 +96,9 @@ export function EsportsDashboard({ initialMatches, dataSource, stale: initialSta
                 <GameScorePanel match={focus} compact />
               </section>}
 
-              <section className="site-panel overflow-hidden rounded-2xl" aria-label="比赛列表">
+              <section className="match-list-section" aria-label="比赛列表">
                 <Tabs value={activeTab} onValueChange={setActiveTab}>
-                  <div className="match-list-header"><TabsList variant="line" className="h-12 w-full justify-start gap-5 overflow-x-auto rounded-none"><TabsTrigger value="live" className="shrink-0 px-0">进行中<span className={liveMatches.length ? "text-danger" : "text-subtle"}>{liveMatches.length}</span></TabsTrigger><TabsTrigger value="upcoming" className="shrink-0 px-0">赛程<span className="text-subtle">{upcoming.length}</span></TabsTrigger><TabsTrigger value="results" className="shrink-0 px-0">赛果</TabsTrigger><TabsTrigger value="following" className="shrink-0 px-0">我的关注</TabsTrigger></TabsList></div>
+                  <LiquidGlass className="match-list-controls"><div className="match-list-header"><TabsList variant="line" className="h-12 w-full justify-start gap-5 overflow-x-auto rounded-none"><TabsTrigger value="live" className="shrink-0 px-0">进行中<span className={liveMatches.length ? "text-danger" : "text-subtle"}>{liveMatches.length}</span></TabsTrigger><TabsTrigger value="upcoming" className="shrink-0 px-0">赛程<span className="text-subtle">{upcoming.length}</span></TabsTrigger><TabsTrigger value="results" className="shrink-0 px-0">赛果</TabsTrigger><TabsTrigger value="following" className="shrink-0 px-0">我的关注</TabsTrigger></TabsList></div></LiquidGlass>
                   <TabsContent value="upcoming" className="m-0">
                     <div className="date-strip" aria-label="比赛日期"><button onClick={() => setSelectedDay(null)} aria-pressed={selectedDay === null}>全部日期</button>{days.map((day, index) => <button key={dayKey(day)} aria-pressed={selectedDay === dayKey(day)} onClick={() => setSelectedDay(dayKey(day))}>{index === 0 ? "今天" : index === 1 ? "明天" : day.toLocaleDateString("zh-CN", { weekday: "short" })}<span>{day.getMonth() + 1}/{day.getDate()}</span></button>)}</div>
                     {upcoming.length ? upcoming.slice(0, 12).map((match) => <FixtureRow key={match.id} match={match} />) : <EmptyState label="这一天还没有已确认的比赛" action={<button onClick={() => setSelectedDay(null)} className="text-sm font-semibold text-brand">查看其他日期 <ChevronRight className="inline size-4" /></button>} />}
