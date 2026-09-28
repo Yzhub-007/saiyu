@@ -25,8 +25,8 @@ export function GameScorePanel({ match, compact = false }: { match: Match; compa
           return <li key={game.id} className={`flex items-center gap-3 rounded-lg border px-3 py-2 text-xs ${game.status === "live" ? "border-brand/30 bg-primary/[0.06] text-brand" : "border-border bg-card text-muted-foreground"}`}><span className="font-mono tabular-nums">G{game.position}</span><span className="font-medium">{game.mapName ? `${game.mapName} · ${status}` : status}</span></li>;
         })}
       </ol> : <p className="mt-3 text-xs text-muted-foreground">单局状态待数据源更新</p>}
-      <div className="mt-3 flex items-start gap-2 text-xs leading-5 text-muted-foreground"><Info className="mt-0.5 size-3.5 shrink-0" /><p><span className="font-medium text-soft">{match.status === "live" ? "实时小比分暂不可用。" : "小比分暂不可用。"}</span>{explanation}</p></div>
-      {(match.game === "cs2" || match.game === "lol" || match.game === "dota") && <div className="mt-3 rounded-lg border border-border bg-card px-3 py-2 text-xs leading-5 text-muted-foreground">{match.game === "cs2" ? "免费赛程接口未提供本场当前地图。" : "免费静态接口提供英雄图鉴，但未提供本场英雄选择。"}<a href={`/library?tab=${match.game === "cs2" ? "cs-map" : match.game === "lol" ? "lol-champion" : "dota-hero"}`} className="ml-1 font-semibold text-brand hover:underline">查看资料库</a></div>}
+      <div className="mt-3 flex items-start gap-2 text-xs leading-5 text-muted-foreground"><Info className="mt-0.5 size-3.5 shrink-0" /><p>{compact ? "实时回合／击杀小比分暂不可用，以上为单局状态。" : <><span className="font-medium text-soft">{match.status === "live" ? "实时小比分暂不可用。" : "小比分暂不可用。"}</span>{explanation}</>}</p></div>
+      {!compact && (match.game === "cs2" || match.game === "lol" || match.game === "dota") && <div className="mt-3 rounded-lg border border-border bg-card px-3 py-2 text-xs leading-5 text-muted-foreground">{match.game === "cs2" ? "地图资料不代表本场实际选图，以已返回的单局信息为准。" : "英雄图鉴不代表本场英雄选择。"}<a href={`/library?tab=${match.game === "cs2" ? "cs-map" : match.game === "lol" ? "lol-champion" : "dota-hero"}`} className="ml-1 font-semibold text-brand hover:underline">查看资料库</a></div>}
     </div>
   );
 }

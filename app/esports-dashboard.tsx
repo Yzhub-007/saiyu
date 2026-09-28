@@ -1,21 +1,22 @@
 "use client";
+/* eslint-disable @next/next/no-html-link-for-pages -- Keep the established full-document navigation for Vinext compatibility. */
 
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Bell, CalendarDays, ChevronRight, Clock3, Flame, LayoutDashboard, Radio, Search, ShieldCheck, Swords, Trophy, Users } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { AlertTriangle, ArrowUpRight, CalendarDays, ChevronRight, Clock3, Radio, ShieldCheck, Trophy, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarInset, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarProvider, SidebarRail, SidebarTrigger } from "@/components/ui/sidebar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { Match } from "@/lib/esports-data";
 import { WebMcpTools } from "./webmcp-tools";
-import { ThemeToggle } from "./_components/theme-toggle";
+import { SiteHeader } from "./_components/site-shell";
 import { TeamMark } from "./_components/team-mark";
 import { MatchTeamNames } from "./_components/match-team-names";
+import { FixtureRow, MatchStatus } from "./_components/fixture-row";
 import { GameScorePanel } from "./_components/game-score-panel";
 import { formatMatchUpdateTime, useMatchUpdates } from "./_components/use-match-updates";
 
 const games = [
-  { id: "all", short: "ALL", name: "全部赛事", tone: "bg-[#d8ff3e] text-[#10150d]" },
+  { id: "all", short: "ALL", name: "全部项目", tone: "bg-[#d8ff3e] text-[#10150d]" },
   { id: "lol", short: "LOL", name: "英雄联盟", tone: "bg-[#18243a] text-[#8cc8ff]" },
   { id: "val", short: "VAL", name: "无畏契约", tone: "bg-[#33181d] text-[#ff6474]" },
   { id: "cs2", short: "CS", name: "CS2", tone: "bg-[#2d2215] text-[#ffb24b]" },
@@ -26,134 +27,91 @@ const games = [
   { id: "mlbb", short: "ML", name: "MLBB", tone: "bg-[#152c3b] text-[#67ccff]" },
 ];
 
-function MatchRow({ match }: { match: Match }) {
-  return (
-    <a href={`/matches/${match.id}`} className="match-row group grid w-full grid-cols-[116px_minmax(0,1fr)_auto] items-center gap-4 border-b border-border px-5 py-4 text-left hover:bg-surface-hover max-lg:grid-cols-1">
-      <div><p className="text-sm font-semibold text-foreground">{localTime(match)}</p><p className="mt-1 text-xs text-muted-foreground">{match.bestOf} · {match.gameName}</p></div>
-      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_72px_minmax(0,1fr)] items-center gap-3">
-        <div className="flex min-w-0 items-center justify-end gap-3"><span className="truncate text-sm font-semibold text-foreground">{match.teamA}</span><TeamMark label={match.teamAShort} color={match.teamAColor} logo={match.teamALogo} name={match.teamA} /></div>
-        <span className="whitespace-nowrap text-center font-mono text-sm text-soft" aria-label={match.status === "upcoming" ? "即将对阵" : `系列比分 ${match.scoreA ?? "–"} 比 ${match.scoreB ?? "–"}`}>{match.status === "upcoming" ? "VS" : <>{match.scoreA ?? "–"} : {match.scoreB ?? "–"}<span className="block font-sans text-[10px] text-subtle">系列比分</span></>}</span>
-        <div className="flex min-w-0 items-center gap-3"><TeamMark label={match.teamBShort} color={match.teamBColor} logo={match.teamBLogo} name={match.teamB} /><span className="truncate text-sm font-semibold text-foreground">{match.teamB}</span></div>
-      </div>
-      <div className="flex min-w-0 items-center gap-3 max-lg:justify-end lg:max-w-36"><span className="truncate text-xs text-muted-foreground" title={match.detail}>{match.detail}</span><ChevronRight className="size-4 shrink-0 text-subtle group-hover:text-brand" /></div>
-    </a>
-  );
-}
-
 export function EsportsDashboard({ initialMatches, dataSource, stale: initialStale }: { initialMatches: Match[]; dataSource: "pandascore" | "demo"; stale: boolean }) {
   const { matches, stale, updatedAt } = useMatchUpdates(initialMatches, { source: dataSource, stale: initialStale });
   const [game, setGame] = useState("all");
   const [today, setToday] = useState<Date | null>(null);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState(initialMatches.some((match) => match.status === "live") ? "live" : "upcoming");
   const [follows, setFollows] = useState<Array<{ entityType: string; entityId: string }>>([]);
   const [followsLoaded, setFollowsLoaded] = useState(false);
   const filtered = useMemo(() => matches.filter((match) => game === "all" || match.game === game), [game, matches]);
   const liveMatches = filtered.filter((match) => match.status === "live");
-  const upcoming = filtered.filter((match) => match.status === "upcoming" && (!selectedDay || dayKey(new Date(match.startsAt)) === selectedDay));
-  const live = liveMatches[0] ?? filtered.find((match) => match.status === "upcoming") ?? filtered[0];
+  const nextMatches = filtered.filter((match) => match.status === "upcoming").sort((a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt));
+  const upcoming = nextMatches.filter((match) => !selectedDay || dayKey(new Date(match.startsAt)) === selectedDay);
+  const completed = filtered.filter((match) => match.status === "complete").sort((a, b) => Date.parse(b.startsAt) - Date.parse(a.startsAt));
+  const focus = liveMatches[0] ?? nextMatches[0] ?? completed[0];
   const followed = filtered.filter((match) => follows.some((item) => (item.entityType === "team" && (item.entityId === match.teamAId || item.entityId === match.teamBId)) || (item.entityType === "tournament" && item.entityId === match.tournamentId) || (item.entityType === "game" && item.entityId === match.game)));
   const days = today ? Array.from({ length: 4 }, (_, index) => { const value = new Date(today); value.setHours(0, 0, 0, 0); value.setDate(value.getDate() + index); return value; }) : [];
+  const selectedGame = games.find((item) => item.id === game)?.name ?? "全部项目";
 
   useEffect(() => {
-    const dateTimer = window.setTimeout(() => {
-      const value = new Date();
-      setToday(value);
-      setSelectedDay(dayKey(value));
-    }, 0);
-    fetch("/api/v1/follows").then(async (response) => response.ok ? response.json() as Promise<{ data?: Array<{ entityType: string; entityId: string }> }> : null).then((body) => { if (body?.data) setFollows(body.data); setFollowsLoaded(true); }).catch(() => setFollowsLoaded(true));
-    return () => window.clearTimeout(dateTimer);
+    const timer = window.setTimeout(() => { const value = new Date(); setToday(value); setSelectedDay(dayKey(value)); }, 0);
+    const controller = new AbortController();
+    fetch("/api/v1/follows", { signal: controller.signal }).then(async (response) => response.ok ? response.json() as Promise<{ data?: Array<{ entityType: string; entityId: string }> }> : null).then((body) => { if (!controller.signal.aborted) { if (body?.data) setFollows(body.data); setFollowsLoaded(true); } }).catch(() => { if (!controller.signal.aborted) setFollowsLoaded(true); });
+    return () => { window.clearTimeout(timer); controller.abort(); };
   }, []);
 
   return (
     <SidebarProvider defaultOpen>
       <WebMcpTools onFilter={setGame} />
       <Sidebar collapsible="icon" className="dashboard-sidebar border-r border-border bg-sidebar">
-        <SidebarHeader className="h-[74px] justify-center border-b border-border px-3">
-          <div className="flex items-center gap-3 overflow-hidden px-1">
-            <div className="brand-mark relative grid size-9 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground"><RadarMark /></div>
-            <div className="min-w-0 group-data-[collapsible=icon]:hidden"><p className="text-base font-black tracking-[0.18em] text-foreground">赛域</p><p className="text-[10px] font-medium tracking-[0.16em] text-muted-foreground">MATCH CONTROL</p></div>
-          </div>
+        <SidebarHeader className="h-[72px] justify-center border-b border-border px-3">
+          <a href="/" className="flex items-center gap-3 overflow-hidden px-1" aria-label="赛域首页">
+            <span className="brand-mark grid size-9 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground"><RadarMark /></span>
+            <span className="min-w-0 group-data-[collapsible=icon]:hidden"><span className="block text-base font-black tracking-[0.18em]">赛域</span><span className="block text-xs tracking-[0.12em] text-muted-foreground">ESPORTS HUB</span></span>
+          </a>
         </SidebarHeader>
-        <SidebarContent className="px-2 py-3">
-          <SidebarGroup>
-            <SidebarGroupLabel className="text-[10px] tracking-[0.18em] text-subtle">比赛项目</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu className="gap-1">
-                {games.map((item) => (
-                  <SidebarMenuItem key={item.id}>
-                    <SidebarMenuButton isActive={game === item.id} tooltip={item.name} onClick={() => setGame(item.id)} className="h-11 rounded-xl text-soft hover:bg-surface-hover hover:text-foreground data-[active=true]:bg-surface-hover data-[active=true]:text-foreground">
-                      <span className={`game-mark grid size-7 shrink-0 place-items-center rounded-lg font-black ${item.tone}`}>{item.short}</span><span className="font-medium">{item.name}</span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
+        <SidebarContent className="px-2 py-4">
+          <SidebarGroup><SidebarGroupLabel className="mb-2 text-subtle">比赛项目</SidebarGroupLabel><SidebarGroupContent><SidebarMenu className="gap-1">
+            {games.map((item) => <SidebarMenuItem key={item.id}><SidebarMenuButton isActive={game === item.id} aria-pressed={game === item.id} tooltip={item.name} onClick={() => setGame(item.id)} className="h-11 rounded-xl text-soft hover:bg-surface-hover hover:text-foreground"><span className={`game-mark grid size-7 shrink-0 place-items-center rounded-lg font-black ${item.tone}`}>{item.short}</span><span className="font-medium">{item.name}</span>{item.id !== "all" && matches.some((match) => match.game === item.id && match.status === "live") && <span className="ml-auto size-1.5 rounded-full bg-danger group-data-[collapsible=icon]:hidden" aria-label="有比赛进行中" />}</SidebarMenuButton></SidebarMenuItem>)}
+          </SidebarMenu></SidebarGroupContent></SidebarGroup>
         </SidebarContent>
-        <SidebarFooter className="border-t border-border p-3">
-          <div className="flex items-center gap-3 rounded-xl bg-surface-hover p-2 group-data-[collapsible=icon]:justify-center"><span className="grid size-8 shrink-0 place-items-center rounded-full bg-primary/10 text-xs font-bold text-brand">访</span><div className="min-w-0 group-data-[collapsible=icon]:hidden"><p className="truncate text-xs font-semibold text-foreground">访客模式</p><p className="truncate text-[11px] text-subtle">登录同步关注</p></div></div>
-        </SidebarFooter>
+        <SidebarFooter className="border-t border-border p-3"><a href="/account" className="flex items-center gap-3 rounded-xl p-2 text-muted-foreground hover:bg-surface-hover"><Users className="size-5 shrink-0" /><span className="text-sm group-data-[collapsible=icon]:hidden">管理我的关注</span><ChevronRight className="ml-auto size-4 group-data-[collapsible=icon]:hidden" /></a></SidebarFooter>
         <SidebarRail />
       </Sidebar>
 
       <SidebarInset className="dashboard-content min-w-0 text-foreground">
-        <header className="site-header glass-toolbar sticky top-0 z-30 flex h-[74px] items-center gap-3 border-b px-4 md:px-6">
-          <SidebarTrigger className="text-soft hover:bg-surface-hover hover:text-foreground" />
-          <a href="/" className="text-sm font-bold tracking-widest md:hidden">赛域</a>
-          <nav className="hidden items-center gap-1 lg:flex" aria-label="主导航">
-            {[[LayoutDashboard, "总览", "/"], [CalendarDays, "赛程", "/schedule"], [Trophy, "赛事", "/tournaments"], [Users, "战队", "/teams"]].map(([Icon, label, href], index) => { const NavIcon = Icon as typeof LayoutDashboard; return <Button key={label as string} variant="ghost" asChild className={index === 0 ? "bg-surface-hover text-foreground" : "text-muted-foreground hover:bg-surface-hover hover:text-foreground"}><a href={href as string}><NavIcon />{label as string}</a></Button>; })}
-          </nav>
-          <div className="ml-auto flex items-center gap-2">
-            <Button asChild variant="outline" className="glass-control text-soft hover:text-foreground"><a href="/search" aria-label="搜索赛事或战队"><Search /><span className="hidden xl:inline">搜索赛事 / 战队</span></a></Button>
-            <ThemeToggle />
-            <Button asChild variant="ghost" size="icon" aria-label="通知" className="text-soft hover:bg-surface-hover hover:text-foreground"><a href="/notifications"><Bell /></a></Button>
-            <Button asChild className="bg-primary font-bold text-primary-foreground hover:bg-brand-hover"><a href="/account">账户</a></Button>
-          </div>
-        </header>
-        <nav className="glass-toolbar flex overflow-x-auto border-b px-4 lg:hidden" aria-label="移动端主导航">
-          {[["总览", "/"], ["赛程", "/schedule"], ["赛事", "/tournaments"], ["战队", "/teams"], ["战力", "/rankings"]].map(([label, href], index) => <a key={href} href={href} aria-current={index === 0 ? "page" : undefined} className={`shrink-0 px-4 py-3 text-sm ${index === 0 ? "border-b-2 border-brand font-semibold text-brand" : "text-muted-foreground"}`}>{label}</a>)}
-        </nav>
-
-        <div className="mx-auto w-full max-w-[1520px] px-4 py-6 md:px-7 lg:py-8">
-          {stale && matches.length > 0 && <div className="mb-5 flex items-start gap-3 rounded-xl border border-warning/20 bg-warning/[0.07] px-4 py-3 text-sm text-warning"><AlertTriangle className="mt-0.5 size-4 shrink-0" /><p>实时数据暂时不可用，当前展示最后一次成功同步的赛程。</p></div>}
-          {stale && matches.length === 0 && <div className="mb-5 flex items-start gap-3 rounded-xl border border-danger/20 bg-danger/[0.07] px-4 py-3 text-sm text-danger"><AlertTriangle className="mt-0.5 size-4 shrink-0" /><p>赛事数据源暂时不可用，请稍后刷新。我们不会用演示比赛替代正式数据。</p></div>}
-          <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
-            <div><div className="mb-2 flex items-center gap-2 text-xs text-muted-foreground"><ShieldCheck className="size-3.5 text-brand" /> {dataSource === "pandascore" ? "PandaScore 授权聚合数据" : "演示数据"} · 本地时区</div><h1 className="dashboard-title text-3xl font-bold text-foreground md:text-4xl">今天看什么<span className="text-brand">.</span></h1><div className="dashboard-summary mt-3"><span className="summary-chip"><strong>{matches.length}</strong> 场重点赛事</span><span className="summary-chip"><strong>{liveMatches.length}</strong> 场正在进行</span></div><p className="mt-2 text-xs text-subtle">每30秒刷新 · 更新于 <time dateTime={updatedAt ?? undefined} suppressHydrationWarning>{formatMatchUpdateTime(updatedAt)}</time></p></div>
-            {days.length > 0 && <div className="glass-control flex max-w-full gap-1 overflow-x-auto rounded-2xl p-1.5" aria-label="比赛日期">{days.map((day, index) => { const key = dayKey(day); return <button key={key} aria-pressed={selectedDay === key} onClick={() => setSelectedDay(key)} className={`shrink-0 rounded-xl px-3.5 py-2.5 text-sm font-semibold ${selectedDay === key ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>{index === 0 ? "今天" : day.toLocaleDateString("zh-CN", { weekday: "short" })} <span className="ml-1 tabular-nums">{day.getDate()}</span></button>; })}</div>}
+        <SiteHeader active="总览" sidebarTrigger={<SidebarTrigger aria-label="切换项目侧栏" className="text-soft" />} />
+        <div id="main-content" tabIndex={-1} className="dashboard-main mx-auto w-full max-w-[1440px] px-4 py-6 md:px-7 lg:py-8">
+          {stale && <div role="status" className={`mb-5 flex items-start gap-3 rounded-xl border px-4 py-3 text-sm ${matches.length ? "border-warning/20 bg-warning/[0.07] text-warning" : "border-danger/20 bg-danger/[0.07] text-danger"}`}><AlertTriangle className="mt-0.5 size-4 shrink-0" /><p>{matches.length ? "数据同步暂时中断，当前展示上次成功更新的赛程与比分。" : "赛事数据源暂时不可用，请稍后刷新。"}</p></div>}
+          <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+            <div><p className="mb-2 text-xs font-semibold tracking-[0.14em] text-brand">THE MATCHDAY</p><h1 className="dashboard-title text-3xl font-bold md:text-4xl">赛事总览<span className="text-brand">.</span></h1><p className="mt-3 text-sm text-muted-foreground">{selectedGame} <span className="mx-2 text-subtle">/</span><strong className="font-semibold text-foreground">{liveMatches.length}</strong> 场进行中 <span className="mx-2 text-subtle">·</span>{nextMatches.length} 场待开赛</p></div>
+            <div className="sync-indicator"><span className={`size-1.5 rounded-full ${stale ? "bg-warning" : dataSource === "demo" ? "bg-subtle" : "bg-success"}`} aria-hidden="true" /><span>{dataSource === "demo" ? "演示数据" : stale ? "等待恢复同步" : "每 30 秒自动同步"}<span className="block text-xs text-subtle">更新于 <time dateTime={updatedAt ?? undefined} suppressHydrationWarning>{formatMatchUpdateTime(updatedAt)}</time></span></span></div>
           </div>
 
-          <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
-            <div className="min-w-0 space-y-5">
-              {live ? <section className="match-spotlight overflow-hidden rounded-2xl border">
-                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-5 py-3"><div className="flex min-w-0 items-center gap-2"><Badge className={`gap-1.5 border ${live.status === "live" ? "border-danger/20 bg-danger/10 text-danger" : "border-info/20 bg-info/10 text-info"}`}><span className={`size-1.5 rounded-full ${live.status === "live" ? "bg-danger" : "bg-info"}`} /> {live.status === "live" ? "LIVE" : live.status === "complete" ? "FINAL" : "NEXT"}</Badge><span className="text-sm font-semibold text-soft">{live.league}</span></div><time className="text-xs text-muted-foreground" dateTime={live.freshness} title={live.freshness} suppressHydrationWarning>更新于 {formatMatchUpdateTime(live.freshness)}</time></div>
-                <div className="spotlight-teams grid items-center gap-5 px-5 py-9 md:grid-cols-[1fr_auto_1fr] md:px-7">
-                  <div className="flex items-center justify-center gap-4 md:justify-end"><div className="text-right"><p className="text-lg font-bold text-foreground md:text-xl">{live.teamA}</p><p className="mt-1 text-xs text-muted-foreground">{live.gameName} · 战力样本待补充</p></div><TeamMark label={live.teamAShort} color={live.teamAColor} logo={live.teamALogo} name={live.teamA} /></div>
-                  <div className="text-center"><p className="mb-2 text-xs text-muted-foreground">系列比分</p><div className="font-mono text-4xl font-black tracking-tight text-foreground"><span>{live.scoreA ?? "–"}</span><span className="mx-3 text-subtle">:</span><span>{live.scoreB ?? "–"}</span></div><p className="mt-2 text-xs font-semibold text-brand">{live.timeLabel}</p><p className="mt-1 text-xs text-subtle">{live.detail}</p></div>
-                  <div className="flex items-center justify-center gap-4 md:justify-start"><TeamMark label={live.teamBShort} color={live.teamBColor} logo={live.teamBLogo} name={live.teamB} /><div><p className="text-lg font-bold text-foreground md:text-xl">{live.teamB}</p><p className="mt-1 text-xs text-muted-foreground">{live.stage}</p></div></div>
+          <div className="dashboard-grid grid items-start gap-6">
+            <div className="min-w-0 space-y-6">
+              {focus && <section className="match-spotlight overflow-hidden rounded-2xl" aria-label={focus.status === "live" ? "正在进行的比赛" : focus.status === "upcoming" ? "下一场比赛" : "最近赛果"}>
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-3.5"><div className="flex min-w-0 flex-wrap items-center gap-3"><MatchStatus status={focus.status} /><span className="text-sm font-semibold text-soft">{focus.league}</span></div><span className="text-xs text-muted-foreground">{focus.gameName} · {focus.bestOf}</span></div>
+                <div className="spotlight-matchup">
+                  <div className="spotlight-team"><TeamMark label={focus.teamAShort} color={focus.teamAColor} logo={focus.teamALogo} name={focus.teamA} size="lg" /><p>{focus.teamA}</p></div>
+                  <div className="spotlight-score"><span className="text-xs text-muted-foreground">{focus.status === "upcoming" ? "即将开赛" : "系列比分"}</span><strong>{focus.status === "upcoming" ? <span className="spotlight-vs">VS</span> : <>{focus.scoreA ?? "–"}<span className="score-divider">:</span>{focus.scoreB ?? "–"}</>}</strong><time dateTime={focus.startsAt} suppressHydrationWarning className="text-xs font-medium text-muted-foreground">{new Date(focus.startsAt).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</time></div>
+                  <div className="spotlight-team"><TeamMark label={focus.teamBShort} color={focus.teamBColor} logo={focus.teamBLogo} name={focus.teamB} size="lg" /><p>{focus.teamB}</p></div>
                 </div>
-                <GameScorePanel match={live} compact />
-                <div className="flex flex-wrap items-center justify-center gap-3 border-t border-border bg-surface-inset px-5 py-4">{live.streamUrl && <Button asChild className="bg-primary font-bold text-primary-foreground hover:bg-brand-hover"><a href={live.streamUrl} target="_blank" rel="noreferrer"><Radio /> 前往官方直播</a></Button>}<Button asChild variant="outline" className="border-border bg-surface-hover text-foreground hover:bg-surface-hover hover:text-foreground"><a href={`/matches/${live.id}`}><Swords /> 查看比赛详情</a></Button></div>
-              </section> : <div className="rounded-2xl border border-border bg-card"><EmptyState label="当前筛选下暂无可展示的比赛。" /></div>}
+                <div className="flex flex-wrap items-center justify-between gap-3 px-5 pb-5"><p className="text-xs text-muted-foreground">{focus.stage}</p><div className="flex flex-wrap gap-2">{focus.streamUrl && <Button asChild className="font-semibold"><a href={focus.streamUrl} target="_blank" rel="noreferrer"><Radio />官方直播<ArrowUpRight /></a></Button>}<Button asChild variant="outline" className="border-border bg-card"><a href={`/matches/${focus.id}`}>比赛详情<ChevronRight /></a></Button></div></div>
+                <GameScorePanel match={focus} compact />
+              </section>}
 
-              <section className="site-panel overflow-hidden rounded-2xl">
-                <Tabs defaultValue="upcoming">
-                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3"><TabsList variant="line" className="gap-5"><TabsTrigger value="upcoming" className="px-0 text-sm data-[state=active]:text-foreground">即将开始 <span className="text-subtle">{upcoming.length}</span></TabsTrigger><TabsTrigger value="live" className="px-0 text-sm data-[state=active]:text-foreground">直播中 <span className="text-danger">{liveMatches.length}</span></TabsTrigger><TabsTrigger value="following" className="px-0 text-sm data-[state=active]:text-foreground">我的关注</TabsTrigger></TabsList><Button asChild variant="ghost" size="sm" className="text-muted-foreground hover:bg-surface-hover hover:text-foreground"><a href="/schedule">完整赛程 <ChevronRight /></a></Button></div>
-                  <TabsContent value="upcoming" className="m-0">{upcoming.length ? upcoming.map((match) => <MatchRow key={match.id} match={match} />) : <EmptyState />}</TabsContent>
-                  <TabsContent value="live" className="m-0">{liveMatches.length ? liveMatches.map((match) => <MatchRow key={match.id} match={match} />) : <EmptyState label="当前没有正在直播的比赛。" />}</TabsContent>
-                  <TabsContent value="following" className="m-0">{followed.length ? followed.map((match) => <MatchRow key={match.id} match={match} />) : <EmptyState label={followsLoaded ? "尚未关注赛事或战队，可从详情页开始关注。" : "正在读取关注内容…"} />}</TabsContent>
+              <section className="site-panel overflow-hidden rounded-2xl" aria-label="比赛列表">
+                <Tabs value={activeTab} onValueChange={setActiveTab}>
+                  <div className="match-list-header"><TabsList variant="line" className="h-12 w-full justify-start gap-5 overflow-x-auto rounded-none"><TabsTrigger value="live" className="shrink-0 px-0">进行中<span className={liveMatches.length ? "text-danger" : "text-subtle"}>{liveMatches.length}</span></TabsTrigger><TabsTrigger value="upcoming" className="shrink-0 px-0">赛程<span className="text-subtle">{upcoming.length}</span></TabsTrigger><TabsTrigger value="results" className="shrink-0 px-0">赛果</TabsTrigger><TabsTrigger value="following" className="shrink-0 px-0">我的关注</TabsTrigger></TabsList></div>
+                  <TabsContent value="upcoming" className="m-0">
+                    <div className="date-strip" aria-label="比赛日期"><button onClick={() => setSelectedDay(null)} aria-pressed={selectedDay === null}>全部日期</button>{days.map((day, index) => <button key={dayKey(day)} aria-pressed={selectedDay === dayKey(day)} onClick={() => setSelectedDay(dayKey(day))}>{index === 0 ? "今天" : index === 1 ? "明天" : day.toLocaleDateString("zh-CN", { weekday: "short" })}<span>{day.getMonth() + 1}/{day.getDate()}</span></button>)}</div>
+                    {upcoming.length ? upcoming.slice(0, 12).map((match) => <FixtureRow key={match.id} match={match} />) : <EmptyState label="这一天还没有已确认的比赛" action={<button onClick={() => setSelectedDay(null)} className="text-sm font-semibold text-brand">查看其他日期 <ChevronRight className="inline size-4" /></button>} />}
+                  </TabsContent>
+                  <TabsContent value="live" className="m-0">{liveMatches.length ? liveMatches.map((match) => <FixtureRow key={match.id} match={match} />) : <EmptyState label="当前项目暂无进行中的比赛" action={<button onClick={() => { setActiveTab("upcoming"); setSelectedDay(null); }} className="text-sm font-semibold text-brand">查看接下来的比赛 <ChevronRight className="inline size-4" /></button>} />}</TabsContent>
+                  <TabsContent value="results" className="m-0">{completed.length ? completed.slice(0, 12).map((match) => <FixtureRow key={match.id} match={match} />) : <EmptyState label="当前项目还没有已归档的赛果" />}</TabsContent>
+                  <TabsContent value="following" className="m-0">{followed.length ? followed.map((match) => <FixtureRow key={match.id} match={match} />) : <EmptyState label={followsLoaded ? "关注战队，让比赛更容易找到" : "正在读取关注内容…"} action={followsLoaded && <a href="/teams" className="text-sm font-semibold text-brand">浏览战队 <ChevronRight className="inline size-4" /></a>} />}</TabsContent>
+                  <a href="/schedule" className="match-list-footer">{activeTab === "results" ? "在赛程中心查看全部赛果" : "前往完整赛程"}<ChevronRight className="size-4" /></a>
                 </Tabs>
               </section>
             </div>
 
-            <aside className="space-y-5">
-              <section className="site-panel rounded-2xl p-5">
-                <div className="mb-4 flex items-center justify-between"><div><p className="text-xs font-semibold tracking-[0.14em] text-muted-foreground">POWER INDEX</p><h2 className="mt-1 text-lg font-bold text-foreground">战力热榜</h2></div><Flame className="size-5 text-brand" /></div>
-                <div className="rounded-xl border border-border bg-surface-inset p-4"><p className="text-sm font-semibold text-soft">正式榜单尚未发布</p><p className="mt-2 text-xs leading-5 text-subtle">有效系列赛和阵容数据达到门槛后才会显示分数。</p><a href="/rankings" className="mt-3 inline-flex text-xs font-semibold text-brand">查看计算规则 <ChevronRight className="size-4" /></a></div>
-              </section>
-              <section className="site-panel rounded-2xl p-5">
-                <div className="flex items-center justify-between"><div><p className="text-xs font-semibold tracking-[0.14em] text-muted-foreground">NEXT UP</p><h2 className="mt-1 text-lg font-bold text-foreground">本周焦点</h2></div><Clock3 className="size-5 text-subtle" /></div>
-                <div className="mt-5 border-l border-border pl-4">{matches.filter((match) => match.status === "upcoming").slice(0, 3).map((match, index, rows) => <a href={`/matches/${match.id}`} key={match.id} className={`relative block pb-5 ${index === rows.length - 1 ? "pb-0" : ""}`}><span className="absolute -left-[21px] top-1 size-2 rounded-full border-2 border-card bg-subtle" /><p className="text-xs text-subtle">{new Date(match.startsAt).toLocaleString("zh-CN", { weekday: "short", hour: "2-digit", minute: "2-digit" })} · {match.league}</p><p className="mt-2 text-sm font-medium leading-5 text-soft"><MatchTeamNames match={match} short /></p></a>)}</div>
-              </section>
+            <aside className="min-w-0 space-y-5">
+              <section className="site-panel overflow-hidden rounded-2xl"><div className="flex items-center justify-between border-b border-border px-5 py-4"><h2 className="text-base font-bold">接下来</h2><Clock3 className="size-4 text-subtle" /></div><div className="px-5">{nextMatches.slice(0, 4).map((match) => <a href={`/matches/${match.id}`} key={match.id} className="next-match block border-b border-border py-4 last:border-0"><div className="mb-2 flex items-center justify-between gap-2"><time dateTime={match.startsAt} suppressHydrationWarning className="text-xs font-semibold text-soft">{new Date(match.startsAt).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</time><span className="text-xs text-subtle">{match.bestOf}</span></div><MatchTeamNames match={match} short /><p className="mt-2 truncate text-xs text-subtle">{match.league}</p></a>)}{!nextMatches.length && <p className="py-6 text-sm text-muted-foreground">新赛程确认后会显示在这里。</p>}</div></section>
+              <section className="rounded-2xl border border-border p-5"><h2 className="flex items-center gap-2 text-sm font-semibold"><ShieldCheck className="size-4 text-brand" />数据与观赛</h2><p className="mt-3 text-sm leading-6 text-muted-foreground">{dataSource === "pandascore" ? "赛程与系列比分来自 PandaScore，时间按你的本地时区显示。" : "当前为演示数据，比赛信息仅用于界面预览。"}</p><p className="mt-2 text-xs leading-5 text-subtle">单局状态与实时小比分分别标注；缺失数据不作推算。直播链接跳转官方平台。</p></section>
+              <a href="/rankings" className="flex items-center gap-3 px-1 py-2 text-sm text-muted-foreground hover:text-foreground"><Trophy className="size-4" /><span>了解战力指数</span><ChevronRight className="ml-auto size-4" /></a>
             </aside>
           </div>
         </div>
@@ -162,20 +120,8 @@ export function EsportsDashboard({ initialMatches, dataSource, stale: initialSta
   );
 }
 
-function EmptyState({ label = "当前筛选下没有即将开始的比赛。" }: { label?: string }) {
-  return <div className="empty-state text-center text-sm"><span className="empty-state-icon"><CalendarDays className="size-5" aria-hidden="true" /></span><p>{label}</p></div>;
+function EmptyState({ label, action }: { label: string; action?: React.ReactNode }) {
+  return <div className="empty-state text-center text-sm"><span className="empty-state-icon"><CalendarDays className="size-5" aria-hidden="true" /></span><p>{label}</p>{action}</div>;
 }
-
-function dayKey(date: Date) {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-}
-
-function localTime(match: Match) {
-  if (match.status === "live") return "进行中";
-  if (match.status === "complete") return "已结束";
-  return new Date(match.startsAt).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
-}
-
-function RadarMark() {
-  return <svg viewBox="0 0 24 24" className="size-5" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" strokeWidth="2" /><path d="M12 4v8l5.6 5.6" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="2" /><circle cx="12" cy="12" r="2.2" fill="currentColor" /></svg>;
-}
+function dayKey(date: Date) { return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`; }
+function RadarMark() { return <svg viewBox="0 0 24 24" className="size-5" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" strokeWidth="2" /><path d="M12 4v8l5.6 5.6" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="2" /><circle cx="12" cy="12" r="2.2" fill="currentColor" /></svg>; }

@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { SessionKeeper } from "./session-keeper";
 import { ThemeProvider } from "./_components/theme-provider";
@@ -10,6 +10,15 @@ export const metadata: Metadata = {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",
   },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  interactiveWidget: "resizes-content",
+  colorScheme: "light dark",
+  themeColor: [{ media: "(prefers-color-scheme: light)", color: "#f9fafb" }, { media: "(prefers-color-scheme: dark)", color: "#101419" }],
 };
 
 export default function RootLayout({
