@@ -19,8 +19,22 @@ type MatchFilters = {
   dateTo?: string | null;
 };
 
-let memoryCache: { expiresAt: number; matches: Match[] } | null = null;
-const CACHE_MS = 45_000;
+type MatchListCache = {
+  expiresAt: number;
+  matches: Match[];
+  fetchedAt: string;
+  stale: boolean;
+  warning?: string;
+};
+type MatchResult = { data: Match | null; meta: MatchDataMeta };
+type MatchDetailCache = MatchResult & { expiresAt: number };
+
+let memoryCache: MatchListCache | null = null;
+let listInFlight: Promise<MatchListCache> | null = null;
+const detailCache = new Map<string, MatchDetailCache>();
+const detailInFlight = new Map<string, Promise<MatchResult>>();
+const CACHE_MS = 30_000;
+const MAX_DETAIL_CACHE_SIZE = 200;
 const supportedGames = new Set(["lol", "val", "cs2", "dota", "kog", "pel", "pubg", "mlbb"]);
 
 export function isPandaScoreConfigured() {
@@ -30,52 +44,17 @@ export function isPandaScoreConfigured() {
 export async function listMatches(filters: MatchFilters = {}): Promise<{ data: Match[]; meta: MatchDataMeta }> {
   const generatedAt = new Date().toISOString();
   if (isPandaScoreConfigured()) {
-    try {
-      const liveMatches = await loadPandaMatches();
-      await saveMatchSnapshot(liveMatches, generatedAt);
-      return {
-        data: applyFilters(liveMatches, filters),
-        meta: { source: "pandascore", licensed: true, generatedAt, stale: false },
-      };
-    } catch (error) {
-      console.error("PandaScore refresh failed", safeMessage(error));
-      if (memoryCache?.matches.length) {
-        return {
-          data: applyFilters(memoryCache.matches, filters),
-          meta: {
-            source: "pandascore",
-            licensed: true,
-            generatedAt,
-            stale: true,
-            warning: safeMessage(error),
-          },
-        };
-      }
-      const snapshot = await loadMatchSnapshot();
-      if (snapshot?.matches.length) {
-        memoryCache = { expiresAt: Date.now() + CACHE_MS, matches: snapshot.matches };
-        return {
-          data: applyFilters(snapshot.matches, filters),
-          meta: {
-            source: "pandascore",
-            licensed: true,
-            generatedAt: snapshot.fetchedAt,
-            stale: true,
-            warning: safeMessage(error),
-          },
-        };
-      }
-      return {
-        data: [],
-        meta: {
-          source: "pandascore",
-          licensed: true,
-          generatedAt,
-          stale: true,
-          warning: safeMessage(error),
-        },
-      };
-    }
+    const cached = await loadPandaMatches();
+    return {
+      data: applyFilters(cached.matches, filters),
+      meta: {
+        source: "pandascore",
+        licensed: true,
+        generatedAt: cached.fetchedAt,
+        stale: cached.stale,
+        ...(cached.warning ? { warning: cached.warning } : {}),
+      },
+    };
   }
 
   return {
@@ -92,23 +71,23 @@ export async function listMatches(filters: MatchFilters = {}): Promise<{ data: M
 
 export async function findMatch(id: string): Promise<{ data: Match | null; meta: MatchDataMeta }> {
   if (isPandaScoreConfigured() && id.startsWith("panda-")) {
+    const cached = detailCache.get(id);
+    if (cached && cached.expiresAt > Date.now()) {
+      detailCache.delete(id);
+      detailCache.set(id, cached);
+      return { data: cached.data, meta: cached.meta };
+    }
+    const pending = detailInFlight.get(id);
+    if (pending) return pending;
+    if (detailInFlight.size >= MAX_DETAIL_CACHE_SIZE) {
+      return staleMatchResult(id, "PandaScore detail refresh is busy");
+    }
+    const refresh = refreshPandaMatch(id);
+    detailInFlight.set(id, refresh);
     try {
-      const record = await new PandaScoreAdapter(process.env.PANDASCORE_TOKEN!).getMatch(id);
-      return {
-        data: record?.data ?? null,
-        meta: { source: "pandascore", licensed: true, generatedAt: new Date().toISOString(), stale: false },
-      };
-    } catch (error) {
-      return {
-        data: null,
-        meta: {
-          source: "pandascore",
-          licensed: true,
-          generatedAt: new Date().toISOString(),
-          stale: true,
-          warning: safeMessage(error),
-        },
-      };
+      return await refresh;
+    } finally {
+      detailInFlight.delete(id);
     }
   }
 
@@ -128,16 +107,106 @@ export async function findMatch(id: string): Promise<{ data: Match | null; meta:
   };
 }
 
-async function loadPandaMatches() {
-  if (memoryCache && memoryCache.expiresAt > Date.now()) return memoryCache.matches;
-  const rows = await new PandaScoreAdapter(process.env.PANDASCORE_TOKEN!).listAll();
-  const unique = new Map(rows.map((row) => [row.data.id, row.data]));
-  const matches = [...unique.values()]
-    .filter((match) => supportedGames.has(match.game))
-    .sort((a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt));
-  if (!matches.length) throw new Error("PandaScore returned no supported matches");
-  memoryCache = { expiresAt: Date.now() + CACHE_MS, matches };
-  return matches;
+async function loadPandaMatches(): Promise<MatchListCache> {
+  if (memoryCache && memoryCache.expiresAt > Date.now()) return memoryCache;
+  if (listInFlight) return listInFlight;
+  listInFlight = refreshPandaMatches();
+  try {
+    return await listInFlight;
+  } finally {
+    listInFlight = null;
+  }
+}
+
+async function refreshPandaMatches(): Promise<MatchListCache> {
+  try {
+    const rows = await new PandaScoreAdapter(process.env.PANDASCORE_TOKEN!).listAll();
+    const unique = new Map(rows.map((row) => [row.data.id, row.data]));
+    const previousMatches = memoryCache?.matches ?? [];
+    const matches = [...unique.values()]
+      .filter((match) => supportedGames.has(match.game))
+      .map((match) => preserveTeamLogos(match, previousMatches))
+      .sort((a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt));
+    if (!matches.length) throw new Error("PandaScore returned no supported matches");
+    const fetchedAt = new Date().toISOString();
+    memoryCache = { expiresAt: Date.now() + CACHE_MS, matches, fetchedAt, stale: false };
+    await saveMatchSnapshot(matches, fetchedAt);
+    return memoryCache;
+  } catch (error) {
+    const warning = safeMessage(error);
+    console.error("PandaScore refresh failed", warning);
+    const fallback = memoryCache?.matches.length ? memoryCache : await loadMatchSnapshot();
+    memoryCache = {
+      expiresAt: Date.now() + CACHE_MS,
+      matches: fallback?.matches ?? [],
+      fetchedAt: fallback?.fetchedAt ?? new Date().toISOString(),
+      stale: true,
+      warning,
+    };
+    return memoryCache;
+  }
+}
+
+async function refreshPandaMatch(id: string): Promise<MatchResult> {
+  let result: MatchResult;
+  try {
+    const record = await new PandaScoreAdapter(process.env.PANDASCORE_TOKEN!).getMatch(id);
+    const previous = detailCache.get(id)?.data;
+    const candidates = [...(previous ? [previous] : []), ...(memoryCache?.matches ?? [])];
+    result = {
+      data: record ? preserveTeamLogos(record.data, candidates) : null,
+      meta: {
+        source: "pandascore",
+        licensed: true,
+        generatedAt: record?.fetchedAt ?? new Date().toISOString(),
+        stale: false,
+      },
+    };
+  } catch (error) {
+    result = staleMatchResult(id, safeMessage(error));
+  }
+  detailCache.delete(id);
+  detailCache.set(id, { ...result, expiresAt: Date.now() + CACHE_MS });
+  while (detailCache.size > MAX_DETAIL_CACHE_SIZE) {
+    const oldest = detailCache.keys().next().value;
+    if (oldest === undefined) break;
+    detailCache.delete(oldest);
+  }
+  return result;
+}
+
+function staleMatchResult(id: string, warning: string): MatchResult {
+  const previous = detailCache.get(id);
+  const listed = memoryCache?.matches.find((match) => match.id === id);
+  return {
+    data: previous?.data ?? listed ?? null,
+    meta: {
+      source: "pandascore",
+      licensed: true,
+      generatedAt: previous?.data
+        ? previous.meta.generatedAt
+        : listed && memoryCache
+          ? memoryCache.fetchedAt
+          : new Date().toISOString(),
+      stale: true,
+      warning,
+    },
+  };
+}
+
+function preserveTeamLogos(match: Match, previous: Match[]): Match {
+  const findLogo = (id: string) => {
+    for (const candidate of previous) {
+      if (candidate.teamAId === id && candidate.teamALogo?.trim()) return candidate.teamALogo;
+      if (candidate.teamBId === id && candidate.teamBLogo?.trim()) return candidate.teamBLogo;
+    }
+    return null;
+  };
+  return {
+    ...match,
+    teamALogo: match.teamALogo?.trim() || findLogo(match.teamAId),
+    teamBLogo: match.teamBLogo?.trim() || findLogo(match.teamBId),
+  };
 }
 
 async function saveMatchSnapshot(matches: Match[], fetchedAt: string) {
@@ -176,6 +245,7 @@ export type TeamSummary = {
   game: string;
   gameName: string;
   color: string;
+  logo: string | null;
   matches: Match[];
 };
 
@@ -185,15 +255,15 @@ export type TournamentSummary = {
   game: string;
   gameName: string;
   matches: Match[];
-  teams: Array<{ id: string; name: string; short: string; color: string }>;
+  teams: Array<{ id: string; name: string; short: string; color: string; logo: string | null }>;
 };
 
 export async function listTeams(): Promise<TeamSummary[]> {
   const { data } = await listMatches();
   const teams = new Map<string, Omit<TeamSummary, "matches">>();
   for (const match of data) {
-    if (match.teamAId !== "tbd-a") teams.set(match.teamAId, { id: match.teamAId, name: match.teamA, short: match.teamAShort, game: match.game, gameName: match.gameName, color: match.teamAColor });
-    if (match.teamBId !== "tbd-b") teams.set(match.teamBId, { id: match.teamBId, name: match.teamB, short: match.teamBShort, game: match.game, gameName: match.gameName, color: match.teamBColor });
+    if (match.teamAId !== "tbd-a") teams.set(match.teamAId, { id: match.teamAId, name: match.teamA, short: match.teamAShort, game: match.game, gameName: match.gameName, color: match.teamAColor, logo: match.teamALogo?.trim() || teams.get(match.teamAId)?.logo || null });
+    if (match.teamBId !== "tbd-b") teams.set(match.teamBId, { id: match.teamBId, name: match.teamB, short: match.teamBShort, game: match.game, gameName: match.gameName, color: match.teamBColor, logo: match.teamBLogo?.trim() || teams.get(match.teamBId)?.logo || null });
   }
   return [...teams.values()].map((team) => ({ ...team, matches: data.filter((match) => match.teamAId === team.id || match.teamBId === team.id) }));
 }
@@ -208,10 +278,10 @@ export async function listTournaments(): Promise<TournamentSummary[]> {
   for (const match of data) groups.set(match.tournamentId, [...(groups.get(match.tournamentId) ?? []), match]);
   return [...groups.entries()].map(([id, tournamentMatches]) => {
     const first = tournamentMatches[0];
-    const teams = new Map<string, { id: string; name: string; short: string; color: string }>();
+    const teams = new Map<string, TournamentSummary["teams"][number]>();
     for (const match of tournamentMatches) {
-      if (match.teamAId !== "tbd-a") teams.set(match.teamAId, { id: match.teamAId, name: match.teamA, short: match.teamAShort, color: match.teamAColor });
-      if (match.teamBId !== "tbd-b") teams.set(match.teamBId, { id: match.teamBId, name: match.teamB, short: match.teamBShort, color: match.teamBColor });
+      if (match.teamAId !== "tbd-a") teams.set(match.teamAId, { id: match.teamAId, name: match.teamA, short: match.teamAShort, color: match.teamAColor, logo: match.teamALogo?.trim() || teams.get(match.teamAId)?.logo || null });
+      if (match.teamBId !== "tbd-b") teams.set(match.teamBId, { id: match.teamBId, name: match.teamB, short: match.teamBShort, color: match.teamBColor, logo: match.teamBLogo?.trim() || teams.get(match.teamBId)?.logo || null });
     }
     return { id, name: first.league, game: first.game, gameName: first.gameName, matches: tournamentMatches, teams: [...teams.values()] };
   });
@@ -237,5 +307,5 @@ function applyFilters(data: Match[], filters: MatchFilters) {
 
 function safeMessage(error: unknown) {
   const message = error instanceof Error ? error.message : "upstream unavailable";
-  return message.replace(/Bearer\s+\S+/gi, "Bearer [redacted]").slice(0, 180);
+  return message.replace(/Bearer\s+\S+/gi, "Bearer [redacted]").replace(/token=[^&\s]+/gi, "token=[redacted]").slice(0, 180);
 }

@@ -1,4 +1,4 @@
-import type { Match } from "../esports-data";
+import type { Match, MatchGame } from "../esports-data";
 import type { MatchSourceAdapter, SourceRecord } from "./types";
 
 type PandaOpponent = {
@@ -22,6 +22,8 @@ type PandaMatch = {
   tournament?: { id?: number; name?: string; slug?: string };
   opponents?: PandaOpponent[];
   results?: PandaResult[];
+  live?: { supported?: boolean };
+  games?: Array<{ id: number; position: number; status?: string; winner?: { id?: number | null } }>;
   streams_list?: Array<{
     raw_url?: string;
     language?: string;
@@ -69,7 +71,8 @@ export class PandaScoreAdapter implements MatchSourceAdapter {
         ? [`${kinds[index]}: ${safeErrorMessage(result.reason)}`]
         : [],
     );
-    if (failures.length) console.warn(`PandaScore collection failures: ${failures.join("; ")}`);
+    // A partial refresh must not silently erase running matches from a good snapshot.
+    if (failures.length) throw new Error(`PandaScore collection failures: ${failures.join("; ")}`);
     const rows = collections.flatMap((result) =>
       result.status === "fulfilled" ? result.value : [],
     );
@@ -139,17 +142,22 @@ export class PandaScoreAdapter implements MatchSourceAdapter {
         teamAShort: teamA?.acronym ?? shortName(teamA?.name, "TBD"),
         teamAId,
         teamAColor: colorFor(teamAId),
+        teamALogo: safeLogoUrl(teamA?.image_url),
         scoreA: scoreFor(row.results, teamA?.id, status),
         teamB: teamB?.name ?? "待定",
         teamBShort: teamB?.acronym ?? shortName(teamB?.name, "TBD"),
         teamBId,
         teamBColor: colorFor(teamBId),
+        teamBLogo: safeLogoUrl(teamB?.image_url),
         scoreB: scoreFor(row.results, teamB?.id, status),
-        detail: status === "live" ? "官方数据实时同步" : status === "complete" ? "已结束" : row.name ?? "赛前信息待更新",
+        detail: status === "live" ? "系列比分自动更新" : status === "complete" ? "已结束" : row.name ?? "赛前信息待更新",
         streamUrl: stream?.raw_url ?? "",
         streamPlatform: platformFor(stream?.raw_url),
         language: stream?.language || "以官方页面为准",
         freshness: fetchedAt,
+        games: normalizeGames(row.games),
+        // Coverage is not subscription permission. Do not imply that REST supplies live scores.
+        scoreCoverage: row.live?.supported === false || game.id === "val" ? "not-covered" : "unavailable",
       },
     };
   }
@@ -168,7 +176,27 @@ function normalizeStatus(status?: string): Match["status"] {
 
 function scoreFor(results: PandaResult[] | undefined, teamId: number | undefined, status: Match["status"]) {
   if (!teamId || status === "upcoming") return null;
-  return results?.find((result) => result.team_id === teamId)?.score ?? 0;
+  const score = results?.find((result) => result.team_id === teamId)?.score;
+  return typeof score === "number" && Number.isFinite(score) && score >= 0 ? score : null;
+}
+
+function safeLogoUrl(value?: string) {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && !url.username && !url.password ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeGames(rows: PandaMatch["games"]): MatchGame[] {
+  return (rows ?? []).filter((game) => Number.isFinite(game.id) && game.position > 0).map((game): MatchGame => ({
+    id: String(game.id),
+    position: game.position,
+    status: game.status === "running" ? "live" : game.status === "finished" ? "complete" : game.status === "canceled" ? "canceled" : "upcoming",
+    winnerId: game.winner?.id ? `panda-team-${game.winner.id}` : null,
+  })).sort((a, b) => a.position - b.position);
 }
 
 function formatBestOf(match: PandaMatch) {

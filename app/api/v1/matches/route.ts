@@ -12,6 +12,6 @@ export async function GET(request: Request) {
   });
   return Response.json(
     { data: result.data, meta: { ...result.meta, count: result.data.length, demo: result.meta.source === "demo" } },
-    { headers: { "cache-control": "public, max-age=30, stale-while-revalidate=120" } },
+    { headers: { "cache-control": "no-store" } },
   );
 }

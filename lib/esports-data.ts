@@ -1,5 +1,12 @@
 export type MatchStatus = "live" | "upcoming" | "complete";
 
+export type MatchGame = {
+  id: string;
+  position: number;
+  status: "live" | "upcoming" | "complete" | "canceled";
+  winnerId: string | null;
+};
+
 export type Match = {
   id: string;
   game: string;
@@ -15,17 +22,21 @@ export type Match = {
   teamAShort: string;
   teamAId: string;
   teamAColor: string;
+  teamALogo?: string | null;
   scoreA: number | null;
   teamB: string;
   teamBShort: string;
   teamBId: string;
   teamBColor: string;
+  teamBLogo?: string | null;
   scoreB: number | null;
   detail: string;
   streamUrl: string;
   streamPlatform: string;
   language: string;
   freshness: string;
+  games?: MatchGame[];
+  scoreCoverage?: "not-covered" | "unavailable";
 };
 
 export const games = [

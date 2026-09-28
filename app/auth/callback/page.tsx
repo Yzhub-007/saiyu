@@ -37,11 +37,11 @@ export default function OAuthCallbackPage() {
   }, []);
 
   return (
-    <main className="grid min-h-screen place-items-center bg-[#080b0f] px-5 text-center text-zinc-300">
-      <div className="w-full max-w-sm rounded-2xl border border-white/[0.08] bg-[#101419] p-8">
-        <Loader2 className="mx-auto size-7 animate-spin text-[#d8ff3e]" />
+    <main className="grid min-h-screen place-items-center bg-background px-5 text-center text-soft">
+      <div className="w-full max-w-sm rounded-2xl border border-border bg-card p-8">
+        <Loader2 className="mx-auto size-7 animate-spin text-brand" />
         <p className="mt-4 text-sm leading-6">{message}</p>
-        <a className="mt-5 inline-block text-sm font-semibold text-[#d8ff3e]" href="/account">返回账户页</a>
+        <a className="mt-5 inline-block text-sm font-semibold text-brand" href="/account">返回账户页</a>
       </div>
     </main>
   );

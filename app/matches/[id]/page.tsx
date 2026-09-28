@@ -1,11 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowUpRight, CalendarPlus, Database, Radio, ShieldCheck, Swords } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Database, ShieldCheck, Swords } from "lucide-react";
 import { findMatch } from "@/lib/matches-service";
-import { SiteShell, TeamMark } from "../../_components/site-shell";
-import { FollowButton } from "../../_components/follow-button";
+import { SiteShell } from "../../_components/site-shell";
+import { MatchLivePanel } from "../../_components/match-live-panel";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -15,7 +13,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
 
 export default async function MatchPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { data: match } = await findMatch(id);
+  const { data: match, meta } = await findMatch(id);
   if (!match) notFound();
   const siteBase = (process.env.SITE_URL?.trim() || "https://saiyu-esports-hub.yuzhenjun233.chatgpt.site").replace(/\/$/, "");
   const structuredData = { "@context": "https://schema.org", "@type": "SportsEvent", name: `${match.teamA} vs ${match.teamB}`, startDate: match.startsAt, eventStatus: match.status === "complete" ? "https://schema.org/EventCompleted" : match.status === "live" ? "https://schema.org/EventInProgress" : "https://schema.org/EventScheduled", url: `${siteBase}/matches/${match.id}`, competitor: [{ "@type": "SportsTeam", name: match.teamA }, { "@type": "SportsTeam", name: match.teamB }], superEvent: { "@type": "SportsEvent", name: match.league } };
@@ -24,28 +22,20 @@ export default async function MatchPage({ params }: { params: Promise<{ id: stri
     <SiteShell>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData).replace(/</g, "\\u003c") }} />
       <main className="mx-auto max-w-[1280px] px-4 py-7 md:px-6">
-        <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-zinc-600"><div className="flex items-center gap-2"><Link href="/schedule" className="hover:text-white">赛程</Link><span>/</span><Link href={`/tournaments/${match.tournamentId}`} className="hover:text-white">{match.league}</Link><span>/</span><span className="text-zinc-400">{match.teamAShort} vs {match.teamBShort}</span></div><div className="flex items-center gap-2"><Database className="size-3.5" />数据更新于 {match.freshness}</div></div>
+        <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-subtle"><div className="flex min-w-0 flex-wrap items-center gap-2"><Link href="/schedule" className="hover:text-foreground">赛程</Link><span>/</span><Link href={`/tournaments/${match.tournamentId}`} className="hover:text-foreground">{match.league}</Link><span>/</span><span className="text-soft">{match.teamAShort} vs {match.teamBShort}</span></div><div className="flex items-center gap-2" title={match.freshness}><Database className="size-3.5" />授权数据同步</div></div>
 
-        <section className="mt-5 overflow-hidden rounded-3xl border border-white/[0.08] bg-[radial-gradient(circle_at_50%_0%,rgba(216,255,62,0.07),transparent_38%),#101419]">
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/[0.07] px-5 py-4"><div className="flex items-center gap-2">{match.status === "live" ? <Badge className="border border-[#ff6474]/20 bg-[#ff6474]/10 text-[#ff7685]"><span className="mr-1 size-1.5 animate-pulse rounded-full bg-[#ff6474]" />直播中</Badge> : <Badge variant="outline" className="text-zinc-400">{match.status === "complete" ? "已结束" : "即将开始"}</Badge>}<span className="font-semibold text-zinc-300">{match.league} · {match.stage}</span></div><span className="text-xs text-zinc-600">{match.bestOf} · {match.gameName}</span></div>
-          <div className="grid items-center gap-8 px-6 py-10 md:grid-cols-[1fr_auto_1fr] md:px-16">
-            <Link href={`/teams/${match.teamAId}`} className="flex items-center justify-center gap-5 md:justify-end"><div className="text-right"><h1 className="text-2xl font-black text-white">{match.teamA}</h1><p className="mt-2 text-sm text-zinc-500">战力样本不足</p></div><TeamMark label={match.teamAShort} color={match.teamAColor} size="lg" /></Link>
-            <div className="text-center"><p className="text-xs font-semibold text-[#d8ff3e]">{match.timeLabel}</p><div className="mt-3 font-mono text-5xl font-black text-white"><span>{match.scoreA ?? "–"}</span><span className="mx-4 text-zinc-700">:</span><span>{match.scoreB ?? "–"}</span></div><p className="mt-3 text-xs text-zinc-600">{match.detail}</p></div>
-            <Link href={`/teams/${match.teamBId}`} className="flex items-center justify-center gap-5 md:justify-start"><TeamMark label={match.teamBShort} color={match.teamBColor} size="lg" /><div><h2 className="text-2xl font-black text-white">{match.teamB}</h2><p className="mt-2 text-sm text-zinc-500">战力样本不足</p></div></Link>
-          </div>
-          <div className="flex flex-wrap justify-center gap-3 border-t border-white/[0.07] bg-black/10 px-4 py-4">{match.streamUrl && <Button asChild className="bg-[#d8ff3e] font-bold text-[#10140d] hover:bg-[#c6ed2f]"><a href={match.streamUrl} target="_blank" rel="noreferrer"><Radio />前往 {match.streamPlatform}<ArrowUpRight /></a></Button>}<Button variant="outline" asChild className="border-white/10 bg-white/[0.03] text-zinc-300 hover:bg-white/[0.07]"><a href={`/calendar/match/${match.id}.ics`}><CalendarPlus />加入日历</a></Button><FollowButton entityType="tournament" entityId={match.tournamentId} label="关注赛事" /></div>
-        </section>
+        <MatchLivePanel key={match.id} initialMatch={match} source={meta.source} stale={meta.stale} />
 
         <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
-          <section className="rounded-2xl border border-white/[0.08] bg-[#101419] p-5 md:p-6">
-            <div className="flex items-center justify-between"><div><p className="text-xs font-semibold tracking-[0.15em] text-[#9ab529]">EXPLAINABLE POWER</p><h2 className="mt-1 text-xl font-bold text-white">战力拆解</h2></div><Swords className="size-5 text-zinc-600" /></div>
-            <div className="mt-6 rounded-xl border border-white/[0.07] bg-black/10 p-6 text-sm leading-6 text-zinc-500">当前授权数据尚不足以稳定计算最近 10 个系列赛及阵容维度，因此不展示总分或拆解指标。待样本满足门槛并通过公式回测后开放。</div>
-            <div className="mt-6 rounded-xl border border-[#d8ff3e]/15 bg-[#d8ff3e]/[0.035] p-4"><div className="flex items-center gap-2 text-sm font-semibold text-zinc-200"><ShieldCheck className="size-4 text-[#d8ff3e]" />如何理解这组数据</div><p className="mt-2 text-sm leading-6 text-zinc-500">指数综合最近 10 个系列赛、对手强度、地图表现、阵容稳定度与赛程强度。它只反映近期竞技状态，不是胜率预测，也不构成任何投注建议。</p></div>
+          <section className="rounded-2xl border border-border bg-card p-5 md:p-6">
+            <div className="flex items-center justify-between"><div><p className="text-xs font-semibold tracking-[0.15em] text-brand">EXPLAINABLE POWER</p><h2 className="mt-1 text-xl font-bold text-foreground">战力拆解</h2></div><Swords className="size-5 text-subtle" /></div>
+            <div className="mt-6 rounded-xl border border-border bg-surface-inset p-6 text-sm leading-6 text-muted-foreground">当前授权数据尚不足以稳定计算最近 10 个系列赛及阵容维度，因此不展示总分或拆解指标。待样本满足门槛并通过公式回测后开放。</div>
+            <div className="mt-6 rounded-xl border border-brand/15 bg-primary/[0.035] p-4"><div className="flex items-center gap-2 text-sm font-semibold text-foreground"><ShieldCheck className="size-4 text-brand" />如何理解这组数据</div><p className="mt-2 text-sm leading-6 text-muted-foreground">指数综合最近 10 个系列赛、对手强度、地图表现、阵容稳定度与赛程强度。它只反映近期竞技状态，不是胜率预测，也不构成任何投注建议。</p></div>
           </section>
 
           <aside className="space-y-5">
-            <section className="rounded-2xl border border-white/[0.08] bg-[#101419] p-5"><p className="text-xs font-semibold tracking-[0.14em] text-zinc-600">OFFICIAL WATCH</p><h2 className="mt-1 text-lg font-bold text-white">官方观赛</h2><div className="mt-4 rounded-xl border border-white/[0.07] bg-black/10 p-4"><p className="font-semibold text-zinc-200">{match.streamPlatform}</p><p className="mt-1 text-xs text-zinc-600">{match.language}</p><p className="mt-3 text-xs leading-5 text-zinc-500">直播由赛事官方平台提供；区域限制和解说语言以官方页面为准。</p></div></section>
-            <section className="rounded-2xl border border-white/[0.08] bg-[#101419] p-5"><p className="text-xs font-semibold tracking-[0.14em] text-zinc-600">MATCH INFO</p><div className="mt-4 space-y-4">{[["赛制", match.bestOf], ["阶段", match.stage], ["开赛", new Date(match.startsAt).toLocaleString("zh-CN", { month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" })], ["数据状态", match.status === "live" ? "实时同步" : match.status === "complete" ? "已结束" : "已确认"]].map(([label, value]) => <div key={label} className="flex justify-between gap-4 text-sm"><span className="text-zinc-600">{label}</span><span className="text-right text-zinc-300">{value}</span></div>)}</div></section>
+            <section className="rounded-2xl border border-border bg-card p-5"><p className="text-xs font-semibold tracking-[0.14em] text-subtle">OFFICIAL WATCH</p><h2 className="mt-1 text-lg font-bold text-foreground">官方观赛</h2><div className="mt-4 rounded-xl border border-border bg-surface-inset p-4"><p className="font-semibold text-foreground">{match.streamPlatform}</p><p className="mt-1 text-xs text-subtle">{match.language}</p><p className="mt-3 text-xs leading-5 text-muted-foreground">直播由赛事官方平台提供；区域限制和解说语言以官方页面为准。</p></div></section>
+            <section className="rounded-2xl border border-border bg-card p-5"><p className="text-xs font-semibold tracking-[0.14em] text-subtle">MATCH INFO</p><div className="mt-4 space-y-4">{[["赛制", match.bestOf], ["阶段", match.stage], ["开赛", new Date(match.startsAt).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" }) + "（北京时间）"], ["数据来源", meta.source === "demo" ? "演示数据" : "PandaScore"]].map(([label, value]) => <div key={label} className="flex justify-between gap-4 text-sm"><span className="text-subtle">{label}</span><span className="text-right text-soft">{value}</span></div>)}</div></section>
           </aside>
         </div>
       </main>

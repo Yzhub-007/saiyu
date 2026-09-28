@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { SessionKeeper } from "./session-keeper";
+import { ThemeProvider } from "./_components/theme-provider";
 
 export const metadata: Metadata = {
   title: "赛域｜全球中文电竞赛程与数据中心",
@@ -17,8 +18,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="zh-CN">
-      <body className="antialiased"><SessionKeeper />{children}</body>
+    <html lang="zh-CN" suppressHydrationWarning>
+      <body className="antialiased"><ThemeProvider><SessionKeeper />{children}</ThemeProvider></body>
     </html>
   );
 }

@@ -44,7 +44,7 @@ export function FollowButton({ entityType, entityId, label = "关注" }: { entit
   }
 
   return (
-    <Button type="button" onClick={toggle} disabled={working || !ready} variant={followed ? "outline" : "default"} className={followed ? "border-[#d8ff3e]/30 bg-[#d8ff3e]/5 text-[#d8ff3e]" : "bg-[#d8ff3e] font-bold text-[#10140d] hover:bg-[#c6ed2f]"}>
+    <Button type="button" onClick={toggle} disabled={working || !ready} variant={followed ? "outline" : "default"} className={followed ? "border-brand/30 bg-primary/5 text-brand" : "bg-primary font-bold text-primary-foreground hover:bg-brand-hover"}>
       {working ? <Loader2 className="animate-spin" /> : followed ? <Check /> : <BellPlus />}
       {followed ? "已关注" : label}
     </Button>

@@ -49,7 +49,7 @@ export function EmailOtpForm({ configured, turnstileSiteKey }: { configured: boo
 
   if (!configured) {
     return (
-      <div className="mt-5 rounded-xl border border-[#ffb24b]/20 bg-[#ffb24b]/[0.04] p-4 text-xs leading-5 text-[#d6ad6a]">
+      <div className="mt-5 rounded-xl border border-warning/20 bg-warning/[0.04] p-4 text-xs leading-5 text-warning">
         邮箱登录代码已接入，等待配置 Supabase 项目地址、匿名密钥与生产 SMTP 后启用。
       </div>
     );
@@ -60,7 +60,7 @@ export function EmailOtpForm({ configured, turnstileSiteKey }: { configured: boo
   const validTokenLength = token.length >= 6 && token.length <= 10;
   return (
     <form onSubmit={enteringCode ? verifyCode : requestCode} className="mt-5 space-y-3">
-      <label className="block text-xs font-semibold text-zinc-500" htmlFor="email">
+      <label className="block text-xs font-semibold text-muted-foreground" htmlFor="email">
         邮箱地址
       </label>
       <Input
@@ -72,11 +72,11 @@ export function EmailOtpForm({ configured, turnstileSiteKey }: { configured: boo
         value={email}
         onChange={(event) => setEmail(event.target.value)}
         placeholder="name@example.com"
-        className="border-white/10 bg-black/20 text-white"
+        className="border-border bg-surface-inset text-foreground"
       />
       {enteringCode && (
         <>
-          <label className="block text-xs font-semibold text-zinc-500" htmlFor="token">
+          <label className="block text-xs font-semibold text-muted-foreground" htmlFor="token">
             邮箱验证码
           </label>
           <Input
@@ -90,12 +90,12 @@ export function EmailOtpForm({ configured, turnstileSiteKey }: { configured: boo
             value={token}
             onChange={(event) => setToken(event.target.value.replace(/\D/g, "").slice(0, 10))}
             placeholder="请输入 6–10 位数字"
-            className="border-white/10 bg-black/20 font-mono tracking-[0.35em] text-white"
+            className="border-border bg-surface-inset font-mono tracking-[0.35em] text-foreground"
           />
         </>
       )}
       {message && (
-        <p className={`text-xs ${step === "error" ? "text-[#ff7180]" : "text-[#9ab529]"}`}>
+        <p className={`text-xs ${step === "error" ? "text-danger" : "text-brand"}`}>
           {message}
         </p>
       )}
@@ -104,7 +104,7 @@ export function EmailOtpForm({ configured, turnstileSiteKey }: { configured: boo
         <Button
           type="submit"
           disabled={waiting || (enteringCode && !validTokenLength) || (!enteringCode && Boolean(turnstileSiteKey) && !captchaToken)}
-          className="flex-1 bg-[#d8ff3e] font-bold text-[#10140d] hover:bg-[#c6ed2f]"
+          className="flex-1 bg-primary font-bold text-primary-foreground hover:bg-brand-hover"
         >
           {waiting ? <Loader2 className="animate-spin" /> : step === "code" ? <Check /> : <Mail />}
           {waiting ? "处理中" : step === "code" ? "验证并登录" : "发送验证码"}
@@ -120,14 +120,14 @@ export function EmailOtpForm({ configured, turnstileSiteKey }: { configured: boo
               setToken("");
               setMessage("");
             }}
-            className="border-white/10 bg-transparent text-zinc-400"
+            className="border-border bg-transparent text-soft"
           >
             <RotateCcw />
           </Button>
         )}
       </div>
-      <p className="text-[11px] leading-5 text-zinc-600">
-        验证码一分钟内只能请求一次；登录即表示同意<a className="text-zinc-400 hover:text-white" href="/privacy">隐私政策</a>与<a className="text-zinc-400 hover:text-white" href="/terms">服务条款</a>。
+      <p className="text-[11px] leading-5 text-subtle">
+        验证码一分钟内只能请求一次；登录即表示同意<a className="text-soft hover:text-foreground" href="/privacy">隐私政策</a>与<a className="text-soft hover:text-foreground" href="/terms">服务条款</a>。
       </p>
     </form>
   );
@@ -146,7 +146,7 @@ export function SupabaseLogoutButton() {
       variant="outline"
       onClick={logout}
       disabled={working}
-      className="mt-4 w-full border-white/10 bg-transparent text-zinc-400"
+      className="mt-4 w-full border-border bg-transparent text-soft"
     >
       {working ? <Loader2 className="animate-spin" /> : <LogOut />}
       退出邮箱账户

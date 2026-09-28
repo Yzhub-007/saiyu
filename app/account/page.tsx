@@ -22,28 +22,28 @@ export default async function AccountPage() {
     <SiteShell>
       <main className="mx-auto max-w-[980px] px-4 py-8 md:px-6">
         <div>
-          <p className="text-xs font-semibold tracking-[0.16em] text-[#9ab529]">ACCOUNT</p>
-          <h1 className="mt-2 text-3xl font-black text-white">账户与提醒</h1>
-          <p className="mt-2 text-sm text-zinc-500">Google 登录、关注同步与赛事提醒。</p>
+          <p className="text-xs font-semibold tracking-[0.16em] text-brand">ACCOUNT</p>
+          <h1 className="mt-2 text-3xl font-black text-foreground">账户与提醒</h1>
+          <p className="mt-2 text-sm text-muted-foreground">Google 登录、关注同步与赛事提醒。</p>
         </div>
         <div className="mt-6 grid gap-5 lg:grid-cols-[330px_minmax(0,1fr)]">
-          <aside className="h-fit rounded-2xl border border-white/[0.08] bg-[#101419] p-5">
+          <aside className="h-fit rounded-2xl border border-border bg-card p-5">
             {user ? (
               <>
-                <span className="grid size-12 place-items-center rounded-full bg-[#d8ff3e]/10 text-[#d8ff3e]">
+                <span className="grid size-12 place-items-center rounded-full bg-primary/10 text-brand">
                   <UserRound />
                 </span>
-                <p className="mt-4 font-bold text-white">{user.displayName}</p>
-                <p className="mt-1 break-all text-xs text-zinc-600">{user.email}</p>
-                <div className="mt-4 flex items-center gap-2 rounded-lg border border-white/[0.06] bg-black/10 px-3 py-2 text-xs text-zinc-500">
+                <p className="mt-4 font-bold text-foreground">{user.displayName}</p>
+                <p className="mt-1 break-all text-xs text-subtle">{user.email}</p>
+                <div className="mt-4 flex items-center gap-2 rounded-lg border border-border bg-surface-inset px-3 py-2 text-xs text-muted-foreground">
                   {user.authProvider === "supabase" ? (
                     <>
-                      <Mail className="size-4 text-[#d8ff3e]" />
+                      <Mail className="size-4 text-brand" />
                       {user.identityProvider === "google" ? "Google 账户" : "邮箱验证码账户"}
                     </>
                   ) : (
                     <>
-                      <ShieldCheck className="size-4 text-[#8fa827]" />站点所有者安全账户
+                      <ShieldCheck className="size-4 text-brand" />站点所有者安全账户
                     </>
                   )}
                 </div>
@@ -51,8 +51,8 @@ export default async function AccountPage() {
                   <SupabaseLogoutButton />
                 ) : (
                   <>
-                    <div className="mt-4 rounded-xl border border-white/[0.06] bg-black/10 p-3 text-xs leading-5 text-zinc-500">
-                      <LockKeyhole className="mb-2 size-4 text-[#8fa827]" />
+                    <div className="mt-4 rounded-xl border border-border bg-surface-inset p-3 text-xs leading-5 text-muted-foreground">
+                      <LockKeyhole className="mb-2 size-4 text-brand" />
                       当前私有站点仍由所有者身份保护。下面可同时测试正式邮箱登录。
                     </div>
                     <GoogleLoginButton enabled={googleOAuthEnabled} />
@@ -60,7 +60,7 @@ export default async function AccountPage() {
                     <Button
                       variant="outline"
                       asChild
-                      className="mt-4 w-full border-white/10 bg-transparent text-zinc-400"
+                      className="mt-4 w-full border-border bg-transparent text-soft"
                     >
                       <a href={chatGPTSignOutPath("/")} target="_top">退出站点账户</a>
                     </Button>
@@ -69,18 +69,18 @@ export default async function AccountPage() {
               </>
             ) : (
               <>
-                <span className="grid size-12 place-items-center rounded-full bg-white/[0.05] text-zinc-500">
+                <span className="grid size-12 place-items-center rounded-full bg-surface-hover text-muted-foreground">
                   <Mail />
                 </span>
-                <h2 className="mt-4 font-bold text-white">登录赛域</h2>
-                <p className="mt-2 text-sm leading-6 text-zinc-600">
+                <h2 className="mt-4 font-bold text-foreground">登录赛域</h2>
+                <p className="mt-2 text-sm leading-6 text-subtle">
                   使用 Google 账户登录后，可跨设备同步关注、提醒与个人日历。
                 </p>
                 <GoogleLoginButton enabled={googleOAuthEnabled} />
                 {emailOtpEnabled ? (
                   <EmailOtpForm configured turnstileSiteKey={process.env.TURNSTILE_SITE_KEY?.trim()} />
                 ) : (
-                  <p className="mt-4 text-xs leading-5 text-zinc-600">邮箱验证码登录将在发信域名配置完成后开放。</p>
+                  <p className="mt-4 text-xs leading-5 text-subtle">邮箱验证码登录将在发信域名配置完成后开放。</p>
                 )}
               </>
             )}
