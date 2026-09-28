@@ -23,7 +23,13 @@ type PandaMatch = {
   opponents?: PandaOpponent[];
   results?: PandaResult[];
   live?: { supported?: boolean };
-  games?: Array<{ id: number; position: number; status?: string; winner?: { id?: number | null } }>;
+  games?: Array<{
+    id: number;
+    position: number;
+    status?: string;
+    winner?: { id?: number | null };
+    map?: { name?: string | null } | null;
+  }>;
   streams_list?: Array<{
     raw_url?: string;
     language?: string;
@@ -199,6 +205,7 @@ function normalizeGames(rows: PandaMatch["games"]): MatchGame[] {
     position: game.position,
     status: game.status === "running" ? "live" : game.status === "finished" ? "complete" : game.status === "canceled" ? "canceled" : "upcoming",
     winnerId: game.winner?.id ? `panda-team-${game.winner.id}` : null,
+    mapName: game.map?.name?.trim() || null,
   })).sort((a, b) => a.position - b.position);
 }
 

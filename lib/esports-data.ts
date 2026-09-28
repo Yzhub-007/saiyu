@@ -5,6 +5,7 @@ export type MatchGame = {
   position: number;
   status: "live" | "upcoming" | "complete" | "canceled";
   winnerId: string | null;
+  mapName?: string | null;
 };
 
 export type Match = {

@@ -1,5 +1,5 @@
 /* eslint-disable @next/next/no-html-link-for-pages -- vinext client navigation currently breaks with next/link */
-import { Bell, CalendarDays, LayoutDashboard, Search, Trophy, Users } from "lucide-react";
+import { Bell, BookOpen, CalendarDays, LayoutDashboard, Search, Trophy, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "./theme-toggle";
 
@@ -10,6 +10,7 @@ const links = [
   { href: "/schedule", label: "赛程", icon: CalendarDays },
   { href: "/tournaments", label: "赛事", icon: Trophy },
   { href: "/teams", label: "战队", icon: Users },
+  { href: "/library", label: "资料库", icon: BookOpen },
 ];
 
 export function SiteShell({ children, active }: { children: React.ReactNode; active?: string }) {

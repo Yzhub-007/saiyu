@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Activity, ChevronRight, Database, ShieldCheck } from "lucide-react";
 import { findTeam } from "@/lib/matches-service";
+import { listBasicPlayersForTeam } from "@/lib/reference-data";
 import { FollowButton } from "../../_components/follow-button";
 import { SiteShell, TeamMark } from "../../_components/site-shell";
 
@@ -18,6 +19,7 @@ export default async function TeamPage({ params }: { params: Promise<{ id: strin
   const { id } = await params;
   const team = await findTeam(id);
   if (!team) notFound();
+  const roster = await listBasicPlayersForTeam(team.id, team.game);
   const completed = team.matches.filter((match) => match.status === "complete" && match.scoreA !== null && match.scoreB !== null);
   const wins = completed.filter((match) => match.teamAId === id ? Number(match.scoreA) > Number(match.scoreB) : Number(match.scoreB) > Number(match.scoreA)).length;
   const upcoming = team.matches.filter((match) => match.status !== "complete").length;
@@ -38,6 +40,7 @@ export default async function TeamPage({ params }: { params: Promise<{ id: strin
             <div className="mt-5 overflow-hidden rounded-xl border border-border">{team.matches.map((match) => <Link key={match.id} href={`/matches/${match.id}`} className="detail-match-row items-center gap-3 border-b border-border px-4 py-4 hover:bg-surface-hover"><div><p className="text-sm font-bold text-foreground">{match.status === "live" ? "进行中" : new Date(match.startsAt).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</p><p className="text-xs text-subtle">{match.bestOf}</p></div><div><p className="text-sm font-semibold text-soft"><MatchTeamNames match={match} /></p><p className="mt-1 text-xs text-subtle">{match.league} · {match.stage}</p></div><ChevronRight className="size-4 text-subtle" /></Link>)}</div>
           </section>
           <aside className="space-y-5">
+            <section className="rounded-2xl border border-border bg-card p-5"><div className="flex items-center gap-2"><Database className="size-5 text-subtle" /><h2 className="text-lg font-bold text-foreground">基础阵容</h2></div><p className="mt-2 text-xs leading-5 text-muted-foreground">仅展示数据源公开的姓名、位置和地区，不包含付费比赛统计。</p>{roster.data.length > 0 ? <ul className="mt-4 space-y-2">{roster.data.map((player) => <li key={player.id} className="flex items-center gap-3 rounded-xl border border-border bg-surface-inset p-3">{player.imageUrl ? <span className="size-10 shrink-0 overflow-hidden rounded-lg bg-[#f4f5f1]"><img src={player.imageUrl} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" className="size-full object-contain" /></span> : <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-surface-hover text-xs font-bold text-subtle">{player.name.slice(0, 2).toUpperCase()}</span>}<span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold text-soft">{player.name}</span><span className="mt-0.5 block truncate text-xs text-subtle">{[player.role, player.nationality, player.active ? "现役" : "非现役"].filter(Boolean).join(" · ")}</span></span></li>)}</ul> : <p className="mt-4 rounded-xl border border-border bg-surface-inset p-4 text-sm leading-6 text-muted-foreground">{roster.warning}</p>}</section>
             <section className="rounded-2xl border border-border bg-card p-5"><div className="flex items-center gap-2"><Database className="size-5 text-subtle" /><h2 className="text-lg font-bold text-foreground">已确认事实</h2></div><div className="mt-4 space-y-4">{[["已结束样本", `${completed.length} 场`], ["已记录胜场", `${wins} 场`], ["待赛 / 进行中", `${upcoming} 场`]].map(([label, value]) => <div key={label} className="flex justify-between text-sm"><span className="text-subtle">{label}</span><span className="font-mono text-soft">{value}</span></div>)}</div></section>
             <section className="rounded-2xl border border-brand/15 bg-primary/[0.03] p-5"><ShieldCheck className="size-5 text-brand" /><h2 className="mt-3 font-bold text-foreground">战力数据暂不展示</h2><p className="mt-2 text-sm leading-6 text-muted-foreground">当前只展示授权来源可确认的赛程与赛果。阵容、地图和对手强度样本达到规则要求后才会生成战力指数。</p></section>
           </aside>
