@@ -3,6 +3,7 @@ import { getDb } from "@/db";
 import { matchSnapshots } from "@/db/schema";
 import { getMatch, matches as demoMatches, type Match } from "./esports-data";
 import { PandaScoreAdapter } from "./data-sources/pandascore";
+import { getExternalDataSourcesForGame, type ExternalDataSource } from "./external-data-sources";
 
 export type MatchDataMeta = {
   source: "pandascore" | "demo";
@@ -287,6 +288,7 @@ export type TournamentSummary = {
   gameName: string;
   matches: Match[];
   teams: Array<{ id: string; name: string; short: string; color: string; logo: string | null }>;
+  dataSources: ExternalDataSource[];
 };
 
 export async function listTeams(): Promise<TeamSummary[]> {
@@ -314,7 +316,15 @@ export async function listTournaments(): Promise<TournamentSummary[]> {
       if (match.teamAId !== "tbd-a") teams.set(match.teamAId, { id: match.teamAId, name: match.teamA, short: match.teamAShort, color: match.teamAColor, logo: match.teamALogo?.trim() || teams.get(match.teamAId)?.logo || null });
       if (match.teamBId !== "tbd-b") teams.set(match.teamBId, { id: match.teamBId, name: match.teamB, short: match.teamBShort, color: match.teamBColor, logo: match.teamBLogo?.trim() || teams.get(match.teamBId)?.logo || null });
     }
-    return { id, name: first.league, game: first.game, gameName: first.gameName, matches: tournamentMatches, teams: [...teams.values()] };
+    return {
+      id,
+      name: first.league,
+      game: first.game,
+      gameName: first.gameName,
+      matches: tournamentMatches,
+      teams: [...teams.values()],
+      dataSources: getExternalDataSourcesForGame(first.game),
+    };
   });
 }
 
