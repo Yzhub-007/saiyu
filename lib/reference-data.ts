@@ -45,42 +45,45 @@ type RawPlayer = {
 };
 
 const CACHE_MS = 6 * 60 * 60 * 1_000;
-let catalogCache: (ReferenceCatalog & { expiresAt: number }) | null = null;
+const catalogCache = new Map<ReferenceKind, ReferenceCatalog & { expiresAt: number }>();
 const rosterCache = new Map<string, { data: BasicPlayer[]; warning?: string; expiresAt: number }>();
 
-export async function getReferenceCatalog(): Promise<ReferenceCatalog> {
-  if (catalogCache && catalogCache.expiresAt > Date.now()) return catalogCache;
-  const sources = [
+const referenceSources = [
     { path: "/csgo/maps", kind: "cs-map" as const, label: "CS 地图" },
     { path: "/lol/champions", kind: "lol-champion" as const, label: "英雄联盟英雄" },
     { path: "/dota2/heroes", kind: "dota-hero" as const, label: "Dota 2 英雄" },
-  ];
-  const results = await Promise.allSettled(
-    sources.map(async (source) => {
-      const rows = await fetchPages<RawReference>(source.path, source.kind === "cs-map" ? 1 : 2);
-      return rows.map((row): ReferenceItem | null => {
-        if (!row.id) return null;
-        const name = (source.kind === "dota-hero" ? row.localized_name : row.name)?.trim();
-        if (!name) return null;
-        return {
-          id: String(row.id),
-          kind: source.kind,
-          name,
-          slug: row.slug?.trim() || row.name?.trim() || String(row.id),
-          imageUrl: safeImage(row.big_image_url) ?? safeImage(row.image_url),
-        };
-      }).filter((item): item is ReferenceItem => item !== null);
-    }),
-  );
+];
+
+export async function getReferenceCatalog(kind: ReferenceKind): Promise<ReferenceCatalog> {
+  const cached = catalogCache.get(kind);
+  if (cached && cached.expiresAt > Date.now()) return cached;
+  const source = referenceSources.find((item) => item.kind === kind);
+  if (!source) return { items: [], fetchedAt: new Date().toISOString(), warnings: ["未知资料分类"] };
+
+  let items: ReferenceItem[] = [];
   const warnings: string[] = [];
-  const items = results.flatMap((result, index) => {
-    if (result.status === "fulfilled") return result.value;
-    warnings.push(`${sources[index].label}暂时无法同步`);
-    return [];
-  }).sort((a, b) => a.name.localeCompare(b.name, "zh-CN"));
+  try {
+    const rows = await fetchPages<RawReference>(source.path, source.kind === "cs-map" ? 1 : 2);
+    items = rows.map((row): ReferenceItem | null => {
+      if (!row.id) return null;
+      const name = (source.kind === "dota-hero" ? row.localized_name : row.name)?.trim();
+      if (!name) return null;
+      return {
+        id: String(row.id),
+        kind: source.kind,
+        name,
+        slug: row.slug?.trim() || row.name?.trim() || String(row.id),
+        imageUrl: safeImage(row.big_image_url) ?? safeImage(row.image_url),
+      };
+    }).filter((item): item is ReferenceItem => item !== null)
+      .sort((a, b) => a.name.localeCompare(b.name, "zh-CN"));
+  } catch {
+    warnings.push(`${source.label}暂时无法同步`);
+  }
   const fetchedAt = new Date().toISOString();
-  catalogCache = { items, warnings, fetchedAt, expiresAt: Date.now() + CACHE_MS };
-  return catalogCache;
+  const result = { items, warnings, fetchedAt, expiresAt: Date.now() + (items.length ? CACHE_MS : 5 * 60_000) };
+  catalogCache.set(kind, result);
+  return result;
 }
 
 export async function listBasicPlayersForTeam(teamId: string, game: string) {

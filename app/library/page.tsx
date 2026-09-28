@@ -1,6 +1,5 @@
-import { AlertTriangle, ArrowUpRight, BookOpen, Database } from "lucide-react";
+import { ArrowUpRight, BookOpen, Database } from "lucide-react";
 import { externalDataSources } from "@/lib/external-data-sources";
-import { getReferenceCatalog } from "@/lib/reference-data";
 import type { ReferenceKind } from "@/lib/reference-data";
 import { SiteShell } from "../_components/site-shell";
 import { LibraryClient } from "./library-client";
@@ -12,7 +11,6 @@ export const metadata = {
 };
 
 export default async function LibraryPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
-  const catalog = await getReferenceCatalog();
   const requestedTab = (await searchParams).tab;
   const initialTab: ReferenceKind = requestedTab === "lol-champion" || requestedTab === "dota-hero" ? requestedTab : "cs-map";
   return (
@@ -67,16 +65,7 @@ export default async function LibraryPage({ searchParams }: { searchParams: Prom
           </div>
         </section>
 
-        {catalog.warnings.length > 0 && (
-          <div role="status" className="mt-5 flex items-start gap-3 rounded-xl border border-warning/20 bg-warning/[0.07] px-4 py-3 text-sm text-warning">
-            <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-            <p>{catalog.warnings.join("；")}，其余资料仍可正常浏览。</p>
-          </div>
-        )}
-        <LibraryClient items={catalog.items} initialTab={initialTab} />
-        <p className="mt-5 text-xs text-subtle">
-          更新于 {new Date(catalog.fetchedAt).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" })}（北京时间）
-        </p>
+        <LibraryClient initialTab={initialTab} />
       </main>
     </SiteShell>
   );
