@@ -14,7 +14,8 @@ import { TeamMark } from "./_components/team-mark";
 import { MatchTeamNames } from "./_components/match-team-names";
 import { FixtureRow, MatchStatus } from "./_components/fixture-row";
 import { GameScorePanel } from "./_components/game-score-panel";
-import { formatMatchUpdateTime, useMatchUpdates } from "./_components/use-match-updates";
+import { useMatchUpdates } from "./_components/use-match-updates";
+import { MatchSyncStatus } from "./_components/match-sync-status";
 
 const games = [
   { id: "all", short: "ALL", name: "全部项目", tone: "bg-[#d8ff3e] text-[#10150d]" },
@@ -28,8 +29,9 @@ const games = [
   { id: "mlbb", short: "ML", name: "MLBB", tone: "bg-[#152c3b] text-[#67ccff]" },
 ];
 
-export function EsportsDashboard({ initialMatches, dataSource, stale: initialStale }: { initialMatches: Match[]; dataSource: "pandascore" | "demo"; stale: boolean }) {
-  const { matches, stale, updatedAt } = useMatchUpdates(initialMatches, { source: dataSource, stale: initialStale });
+export function EsportsDashboard({ initialMatches, dataSource, stale: initialStale, generatedAt }: { initialMatches: Match[]; dataSource: "pandascore" | "demo"; stale: boolean; generatedAt: string }) {
+  const updates = useMatchUpdates(initialMatches, { source: dataSource, stale: initialStale, generatedAt });
+  const { matches, stale } = updates;
   const [game, setGame] = useState("all");
   const [today, setToday] = useState<Date | null>(null);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
@@ -80,7 +82,7 @@ export function EsportsDashboard({ initialMatches, dataSource, stale: initialSta
           {stale && <div role="status" className={`mb-5 flex items-start gap-3 rounded-xl border px-4 py-3 text-sm ${matches.length ? "border-warning/20 bg-warning/[0.07] text-warning" : "border-danger/20 bg-danger/[0.07] text-danger"}`}><AlertTriangle className="mt-0.5 size-4 shrink-0" /><p>{matches.length ? "数据同步暂时中断，当前展示上次成功更新的赛程与比分。" : "赛事数据源暂时不可用，请稍后刷新。"}</p></div>}
           <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
             <div><p className="mb-2 text-xs font-semibold tracking-[0.14em] text-brand">THE MATCHDAY</p><h1 className="dashboard-title text-3xl font-bold md:text-4xl">赛事总览<span className="text-brand">.</span></h1><p className="mt-3 text-sm text-muted-foreground">{selectedGame} <span className="mx-2 text-subtle">/</span><strong className="font-semibold text-foreground">{liveMatches.length}</strong> 场进行中 <span className="mx-2 text-subtle">·</span>{nextMatches.length} 场待开赛</p></div>
-            <div className="sync-indicator"><span className={`size-1.5 rounded-full ${stale ? "bg-warning" : dataSource === "demo" ? "bg-subtle" : "bg-success"}`} aria-hidden="true" /><span>{dataSource === "demo" ? "演示数据" : stale ? "等待恢复同步" : "每 30 秒自动同步"}<span className="block text-xs text-subtle">更新于 <time dateTime={updatedAt ?? undefined} suppressHydrationWarning>{formatMatchUpdateTime(updatedAt)}</time></span></span></div>
+            <MatchSyncStatus source={dataSource} {...updates} />
           </div>
 
           <div className="dashboard-grid grid items-start gap-6">

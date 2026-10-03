@@ -26,7 +26,7 @@ export default async function MatchPage({ params }: { params: Promise<{ id: stri
       <main className="mx-auto max-w-[1280px] px-4 py-7 md:px-6">
         <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-subtle"><div className="flex min-w-0 flex-wrap items-center gap-2"><Link href="/schedule" className="hover:text-foreground">赛程</Link><span>/</span><Link href={`/tournaments/${match.tournamentId}`} className="hover:text-foreground">{match.league}</Link><span>/</span><span className="text-soft">{match.teamAShort} vs {match.teamBShort}</span></div><div className="flex items-center gap-2" title={match.freshness}><Database className="size-3.5" />授权数据同步</div></div>
 
-        <MatchLivePanel key={match.id} initialMatch={match} source={meta.source} stale={meta.stale} />
+        <MatchLivePanel key={match.id} initialMatch={match} source={meta.source} stale={meta.stale} generatedAt={meta.generatedAt} />
 
         <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
           <section className="rounded-2xl border border-border bg-card p-5 md:p-6">
