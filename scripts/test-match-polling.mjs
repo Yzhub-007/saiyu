@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import ts from "typescript";
+import * as refresh from "../lib/match-refresh.ts";
 
 // Run the real hook with controlled React state, visibility, requests, and timers.
 // No browser, server, credentials, network, or additional dependencies are needed.
@@ -31,21 +32,26 @@ function createHarness({ hidden = false, respectAbort = true } = {}) {
     },
   };
   const react = {
+    useRef: (current) => ({ current }),
+    useCallback: (callback) => callback,
     useState: (initial) => {
       state = initial();
       return [state, (next) => { state = typeof next === "function" ? next(state) : next; }];
     },
     useEffect: (effect) => { cleanup = effect(); },
   };
-  function addTimer(callback, delay, repeat = false) {
+  function addTimer(callback, delay, poll = false) {
     const id = ++nextTimer;
-    timers.set(id, { callback, at: now + delay, delay, repeat });
+    timers.set(id, { callback, at: now + delay, delay, poll });
     return id;
   }
   const exports = {};
   vm.runInNewContext(compiled, {
     exports,
-    require: (name) => { assert.equal(name, "react"); return react; },
+    require: (name) => {
+      if (name === "react") return react;
+      assert.equal(name, "@/lib/match-refresh"); return refresh;
+    },
     AbortController,
     AbortSignal: {
       any: (signals) => {
@@ -60,12 +66,15 @@ function createHarness({ hidden = false, respectAbort = true } = {}) {
       },
     },
     document,
+    navigator: { onLine: true },
     window: {
-      setInterval: (callback, delay) => {
+      setTimeout: (callback, delay) => {
         assert.equal(delay, 30_000);
         return addTimer(callback, delay, true);
       },
-      clearInterval: (id) => timers.delete(id),
+      clearTimeout: (id) => timers.delete(id),
+      addEventListener: document.addEventListener,
+      removeEventListener: document.removeEventListener,
     },
     fetch: (url, options) => new Promise((resolve, reject) => {
       requests.push({ url, options, resolve, reject, requestSignal: combinedInputs.at(-1)[0] });
@@ -79,7 +88,7 @@ function createHarness({ hidden = false, respectAbort = true } = {}) {
     api: exports,
     requests,
     get state() { return state; },
-    get intervals() { return [...timers.values()].filter((timer) => timer.repeat).length; },
+    get intervals() { return [...timers.values()].filter((timer) => timer.poll).length; },
     async advance(milliseconds) {
       const target = now + milliseconds;
       while (true) {
@@ -87,8 +96,7 @@ function createHarness({ hidden = false, respectAbort = true } = {}) {
         if (!next) break;
         const [id, timer] = next;
         now = timer.at;
-        if (timer.repeat) timer.at += timer.delay;
-        else timers.delete(id);
+        timers.delete(id);
         timer.callback();
         await flush();
       }
@@ -96,7 +104,7 @@ function createHarness({ hidden = false, respectAbort = true } = {}) {
       await flush();
     },
     tickIntervals() {
-      for (const timer of [...timers.values()]) if (timer.repeat) timer.callback();
+      for (const [id, timer] of [...timers]) if (timer.poll) { timers.delete(id); timer.callback(); }
     },
     show(visible) {
       document.hidden = !visible;
@@ -110,13 +118,19 @@ function createHarness({ hidden = false, respectAbort = true } = {}) {
   };
 }
 
-const seed = { id: "panda-1", freshness: "2026-09-27T01:00:00Z", scoreA: 0, scoreB: 0 };
+const seed = {
+  id: "panda-1", freshness: "2026-09-27T01:00:00Z", scoreA: 0, scoreB: 0,
+  startsAt: "2026-09-27T01:00:00Z", status: "live", game: "cs2", gameName: "CS2", league: "Test", tournamentId: "t1", stage: "Final", timeLabel: "进行中", bestOf: "BO3",
+  teamA: "Alpha", teamAShort: "ALP", teamAId: "a", teamAColor: "#fff",
+  teamB: "Beta", teamBShort: "BET", teamBId: "b", teamBColor: "#fff",
+  detail: "", streamUrl: "", streamPlatform: "", language: "", games: [],
+};
 const newer = { ...seed, freshness: "2026-09-27T01:01:00Z", scoreA: 1 };
 const latest = { ...seed, freshness: "2026-09-27T01:02:00Z", scoreA: 2 };
 const options = { source: "pandascore", stale: false };
 const response = (data, stale = false, source = "pandascore") => ({
   ok: true,
-  json: async () => ({ data, meta: { stale, source } }),
+  json: async () => ({ data, meta: { stale, source, generatedAt: (Array.isArray(data) ? data.at(-1)?.freshness : data?.freshness) ?? seed.freshness } }),
 });
 
 const list = createHarness();
@@ -128,7 +142,7 @@ list.tickIntervals();
 assert.equal(list.requests.length, 1, "pending requests must not overlap");
 list.requests[0].resolve(response([seed, newer]));
 await flush();
-assert.equal(list.state.updatedAt, newer.freshness, "the displayed time comes from the freshest Match");
+assert.equal(list.state.updatedAt, newer.freshness, "the displayed time comes from server acquisition metadata");
 assert.equal(list.state.matches[1].scoreA, 1);
 await list.advance(29_999);
 assert.equal(list.requests.length, 1);
@@ -201,8 +215,10 @@ assert.equal(timeout.requests[0].requestSignal.aborted, false, "timeout must not
 assert.equal(timeout.state.stale, true, "a timeout marks retained data stale");
 assert.equal(timeout.state.updatedAt, seed.freshness);
 assert.equal(timeout.state.matches[0], seed);
-await timeout.advance(5_000);
-assert.equal(timeout.requests.length, 2, "timeout must release the in-flight request for the next poll");
+await timeout.advance(29_999);
+assert.equal(timeout.requests.length, 1);
+await timeout.advance(1);
+assert.equal(timeout.requests.length, 2, "the next poll starts 30 seconds after the failed request finishes");
 timeout.requests[1].resolve(response([newer]));
 await flush();
 assert.equal(timeout.state.stale, false);
@@ -235,5 +251,5 @@ for (const hook of ["useMatchUpdates", "useMatchUpdate"]) {
 
 assert.equal(list.api.formatMatchUpdateTime(null), "—");
 assert.equal(list.api.formatMatchUpdateTime("38 秒前"), "—");
-assert.match(list.api.formatMatchUpdateTime(newer.freshness), /^\d{2}:\d{2}:\d{2}$/);
+assert.match(list.api.formatMatchUpdateTime(newer.freshness), /\d+\/\d+.*\d{2}:\d{2}:\d{2}/);
 console.log("PASS: polling cadence, no overlap, stale/error retention, source freshness, visibility, races, cleanup, detail polling, demo opt-out, and 25s timeout recovery.");

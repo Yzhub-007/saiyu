@@ -1,5 +1,6 @@
 import type { Match, MatchGame } from "../esports-data";
 import type { MatchSourceAdapter, SourceRecord } from "./types";
+import type { CollectionKind, CollectionResult } from "../match-collections";
 
 type PandaOpponent = {
   opponent?: { id?: number; name?: string; acronym?: string; image_url?: string };
@@ -59,13 +60,14 @@ const gameAliases: Record<string, { id: string; name: string }> = {
 export class PandaScoreAdapter implements MatchSourceAdapter {
   readonly id = "pandascore";
 
-  constructor(private readonly token: string) {}
+  private readonly token: string;
+  constructor(token: string) { this.token = token; }
 
   async listUpcoming(): Promise<SourceRecord<Partial<Match>>[]> {
     return this.fetchCollection("upcoming");
   }
 
-  async listAll(): Promise<SourceRecord<Match>[]> {
+  async listCollections(): Promise<CollectionResult[]> {
     const kinds = ["running", "upcoming", "past"] as const;
     const collections = await Promise.allSettled([
       this.fetchCollection("running"),
@@ -75,23 +77,9 @@ export class PandaScoreAdapter implements MatchSourceAdapter {
       // without calling paid post-match/statistics endpoints.
       this.fetchCollection("past", 100),
     ]);
-    const failures = collections.flatMap((result, index) =>
-      result.status === "rejected"
-        ? [`${kinds[index]}: ${safeErrorMessage(result.reason)}`]
-        : [],
-    );
-    // A partial refresh must not silently erase running matches from a good snapshot.
-    if (failures.length) throw new Error(`PandaScore collection failures: ${failures.join("; ")}`);
-    const rows = collections.flatMap((result) =>
-      result.status === "fulfilled" ? result.value : [],
-    );
-    if (!rows.length) {
-      const rejection = collections.find((result) => result.status === "rejected");
-      throw rejection && rejection.status === "rejected"
-        ? rejection.reason
-        : new Error("PandaScore returned no matches");
-    }
-    return rows as SourceRecord<Match>[];
+    return collections.map((result, index): CollectionResult => result.status === "fulfilled"
+      ? { kind: kinds[index], ok: true, matches: result.value.map((row) => row.data), fetchedAt: result.value[0]?.fetchedAt ?? new Date().toISOString() }
+      : { kind: kinds[index], ok: false, error: safeErrorMessage(result.reason) });
   }
 
   async getMatch(id: string): Promise<SourceRecord<Match> | null> {
@@ -104,18 +92,21 @@ export class PandaScoreAdapter implements MatchSourceAdapter {
     return this.toRecord((await response.json()) as PandaMatch, fetchedAt);
   }
 
-  private async fetchCollection(kind: "running" | "upcoming" | "past", perPage = 100) {
+  private async fetchCollection(kind: CollectionKind, perPage = 100) {
     const sort = kind === "past" ? "&sort=-end_at" : "&sort=begin_at";
     const response = await this.request(`/matches/${kind}?per_page=${perPage}${sort}`);
     if (!response.ok) throw new Error(`PandaScore ${kind} request failed: ${response.status}`);
     const fetchedAt = new Date().toISOString();
     const rows = (await response.json()) as PandaMatch[];
+    if (!Array.isArray(rows) || rows.some((row) => !row || !Number.isInteger(row.id) || row.id <= 0)) {
+      throw new Error(`PandaScore ${kind} returned invalid data`);
+    }
     return rows.map((row) => this.toRecord(row, fetchedAt));
   }
 
   private request(path: string) {
     if (!this.token) throw new Error("PANDASCORE_TOKEN is not configured");
-    return cachedFetch(`https://api.pandascore.co${path}`, this.token);
+    return fetchWithRetry(`https://api.pandascore.co${path}`, this.token);
   }
 
   private toRecord(row: PandaMatch, fetchedAt: string): SourceRecord<Match> {
@@ -249,31 +240,32 @@ function platformFor(url?: string) {
   return "官方直播";
 }
 
-async function cachedFetch(url: string, token: string) {
-  return fetchWithRetry(url, token);
-}
-
 async function fetchWithRetry(url: string, token: string) {
+  // Two 8-second attempts fit inside the browser's 25-second request budget.
+  // The shared deadline also bounds an auth fallback after a failed attempt.
+  const deadline = AbortSignal.timeout(18_000);
   let lastError: unknown;
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
       const response = await fetch(url, {
         headers: { authorization: `Bearer ${token}`, accept: "application/json" },
-        signal: AbortSignal.timeout(20_000),
+        signal: AbortSignal.any([deadline, AbortSignal.timeout(8_000)]),
       });
       if (response.status === 401 || response.status === 403) {
+        await response.body?.cancel();
         const fallbackUrl = new URL(url);
         fallbackUrl.searchParams.set("token", token);
         return fetch(fallbackUrl, {
           headers: { accept: "application/json" },
-          signal: AbortSignal.timeout(20_000),
+          signal: AbortSignal.any([deadline, AbortSignal.timeout(8_000)]),
         });
       }
-      if (attempt === 0 && (response.status === 429 || response.status >= 500)) continue;
+      // Let the next scheduled refresh handle rate limits instead of retrying immediately.
+      if (attempt === 0 && response.status >= 500) { await response.body?.cancel(); continue; }
       return response;
     } catch (error) {
       lastError = error;
-      if (attempt === 1) throw error;
+      if (attempt === 1 || deadline.aborted) throw error;
     }
   }
   throw lastError instanceof Error ? lastError : new Error("PandaScore request failed");
@@ -281,5 +273,5 @@ async function fetchWithRetry(url: string, token: string) {
 
 function safeErrorMessage(error: unknown) {
   const message = error instanceof Error ? error.message : "upstream unavailable";
-  return message.replace(/token=[^&\s]+/gi, "token=[redacted]").slice(0, 160);
+  return message.replace(/Bearer\s+\S+/gi, "Bearer [redacted]").replace(/token=[^&\s]+/gi, "token=[redacted]").slice(0, 160);
 }

@@ -3,6 +3,8 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import vm from "node:vm";
 import ts from "typescript";
+import * as collections from "../lib/match-collections.ts";
+import * as refresh from "../lib/match-refresh.ts";
 
 // Exercise the actual service and routes with an isolated clock, adapter and DB.
 // No real credentials, network calls, persistent DB or framework runtime are used.
@@ -28,6 +30,8 @@ function match(id = "panda-1", logo = logoUrl) {
     teamAShort: "A", teamBShort: "B", teamAColor: "#fff", teamBColor: "#000",
     teamALogo: logo, teamBLogo: null, tournamentId: "tournament", league: "League",
     freshness: initialTime,
+    stage: "Final", bestOf: "BO3", timeLabel: "进行中", scoreA: 0, scoreB: 0,
+    detail: "", streamUrl: "", streamPlatform: "", language: "",
   };
 }
 
@@ -39,6 +43,7 @@ function harness(seed = null) {
     details: 0,
     writes: 0,
     list: async () => [{ data: match() }],
+    collections: null,
     detail: async (id) => ({ data: match(id), fetchedAt: new Date(now).toISOString() }),
   };
   class FakeDate extends Date {
@@ -46,7 +51,16 @@ function harness(seed = null) {
     static now() { return now; }
   }
   class Adapter {
-    async listAll() { state.lists++; return state.list(); }
+    async listCollections() {
+      state.lists++;
+      if (state.collections) return state.collections();
+      const rows = await state.list();
+      return ["running", "upcoming", "past"].map((kind) => ({
+        kind, ok: true, fetchedAt: new Date(now).toISOString(),
+        matches: rows.map((row) => ({ ...row.data, freshness: new Date(now).toISOString() }))
+          .filter((row) => collections.collectionForMatch(row) === kind),
+      }));
+    }
     async getMatch(id) { state.details++; return state.detail(id); }
   }
   const db = {
@@ -72,11 +86,14 @@ function harness(seed = null) {
     },
   };
   const modules = {
-    "drizzle-orm": { eq: () => null },
+    "drizzle-orm": { eq: () => null, sql: () => null },
     "@/db": { getDb: () => db },
     "@/db/schema": { matchSnapshots: { key: "key" } },
     "./esports-data": { matches: [], getMatch: () => null },
     "./data-sources/pandascore": { PandaScoreAdapter: Adapter },
+    "./match-collections": collections,
+    "./match-refresh": refresh,
+    "./external-data-sources": { getExternalDataSourcesForGame: () => [] },
   };
   const api = {};
   vm.runInNewContext(serviceCode, {
@@ -90,7 +107,7 @@ function harness(seed = null) {
     Error,
     console: { error() {}, warn() {} },
   });
-  return { api, state, advance: (ms) => { now += ms; } };
+  return { api, state, snapshot: () => snapshot, advance: (ms) => { now += ms; } };
 }
 
 function route(code, service) {
@@ -158,6 +175,7 @@ test("disk snapshot fallback remains stale on repeated cache hits", async () => 
 
 test("concurrent detail requests share a refresh and failures preserve old detail", async () => {
   const h = harness();
+  h.state.list = async () => [];
   const batch = await Promise.all(Array.from({ length: 6 }, () => h.api.findMatch("panda-1")));
   assert.equal(h.state.details, 1);
   h.advance(31_000);
@@ -170,15 +188,16 @@ test("concurrent detail requests share a refresh and failures preserve old detai
   assert.equal(h.state.details, 2);
 });
 
-test("failed detail fetch can fall back to the list cache, but cannot invent a match", async () => {
+test("fresh list records avoid paid detail calls, missing records cannot be invented", async () => {
   const h = harness();
   const listed = await h.api.listMatches();
   h.advance(10_000);
   h.state.detail = async () => { throw new Error("offline"); };
   const fallback = await h.api.findMatch("panda-1");
   assert.equal(fallback.data.id, "panda-1");
-  assert.equal(fallback.meta.stale, true);
+  assert.equal(fallback.meta.stale, false);
   assert.equal(fallback.meta.generatedAt, listed.meta.generatedAt);
+  assert.equal(h.state.details, 0);
   const unavailable = await h.api.findMatch("panda-2");
   assert.equal(unavailable.data, null);
   assert.equal(unavailable.meta.stale, true);
@@ -196,6 +215,7 @@ test("authoritative not found remains fresh null and is cached", async () => {
 
 test("detail cache evicts the least recently used match beyond 200 entries", async () => {
   const h = harness();
+  h.state.list = async () => [];
   for (let i = 0; i <= 200; i++) await h.api.findMatch(`panda-${i}`);
   assert.equal(h.state.details, 201);
   await h.api.findMatch("panda-200");
@@ -209,6 +229,33 @@ test("team and tournament summaries preserve a logo when another match has none"
   h.state.list = async () => [{ data: match("panda-1") }, { data: match("panda-2", null) }];
   assert.equal((await h.api.listTeams())[0].logo, logoUrl);
   assert.equal((await h.api.listTournaments())[0].teams[0].logo, logoUrl);
+});
+
+test("service saves partial health and restores failed collections after a cold start", async () => {
+  const h = harness();
+  await h.api.listMatches();
+  h.advance(31_000);
+  const fetchedAt = "2026-09-28T00:00:31.000Z";
+  h.state.collections = async () => [
+    { kind: "running", ok: true, fetchedAt, matches: [{ ...match(), freshness: fetchedAt, scoreA: 1 }] },
+    { kind: "upcoming", ok: false, error: "timeout" },
+    { kind: "past", ok: true, fetchedAt, matches: [] },
+  ];
+  const partial = await h.api.listMatches();
+  assert.equal(partial.meta.sync.status, "partial");
+  assert.equal(partial.meta.stale, true);
+  assert.equal(partial.data[0].scoreA, 1);
+  assert.equal((await h.api.findMatch("panda-1")).meta.stale, false, "healthy match detail remains usable");
+  assert.equal(h.state.details, 0);
+  assert.equal(JSON.parse(h.snapshot().payload).version, 2);
+  const cold = harness(h.snapshot());
+  cold.state.list = async () => { throw new Error("offline"); };
+  const restored = await cold.api.listMatches();
+  assert.equal(restored.data[0].scoreA, 1);
+  assert.equal(restored.meta.generatedAt, partial.meta.generatedAt);
+  assert.equal(restored.meta.sync.collections.running.fetchedAt, fetchedAt);
+  assert.equal(restored.meta.sync.collections.upcoming.fetchedAt, "2026-09-28T00:00:00.000Z");
+  assert.equal(restored.meta.sync.status, "stale");
 });
 
 test("detail API uses no-store and distinguishes 200, 404 and 503", async () => {

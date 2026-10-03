@@ -51,8 +51,8 @@ test("upcoming matches do not show a stale series score", async () => {
 test("single games retain order, status and winner, not fictitious round scores", async () => {
   const match = await mapped(base);
   assert.deepEqual(match.games, [
-    { id: "101", position: 1, status: "complete", winnerId: "panda-team-34" },
-    { id: "102", position: 2, status: "live", winnerId: null },
+    { id: "101", position: 1, status: "complete", winnerId: "panda-team-34", mapName: null },
+    { id: "102", position: 2, status: "live", winnerId: null, mapName: null },
   ]);
   assert.equal(match.scoreCoverage, "not-covered");
 });
@@ -60,10 +60,15 @@ test("provider live coverage is not represented as working realtime permission",
   assert.equal((await mapped({ ...base, live: { supported: true } })).scoreCoverage, "unavailable");
   assert.equal((await mapped({ ...base, live: { supported: true }, videogame: { slug: "valorant" } })).scoreCoverage, "not-covered");
 });
-test("partial collection outage rejects refresh, preserving service snapshot", async () => {
+test("partial collection outage preserves independently successful collections", async () => {
   const original = globalThis.fetch;
   globalThis.fetch = async (url) => String(url).includes("/running") ? new Response(null, { status: 503 }) : Response.json([base]);
-  try { await assert.rejects(new PandaScoreAdapter("test-only").listAll(), /running/); }
+  try {
+    const collections = await new PandaScoreAdapter("test-only").listCollections();
+    assert.equal(collections[0].ok, false);
+    assert.equal(collections[1].ok, true);
+    assert.equal(collections[2].ok, true);
+  }
   finally { globalThis.fetch = original; }
 });
 test("invalid IDs cause no provider call; not found remains null", async () => {

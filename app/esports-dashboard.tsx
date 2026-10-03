@@ -16,6 +16,7 @@ import { FixtureRow, MatchStatus } from "./_components/fixture-row";
 import { GameScorePanel } from "./_components/game-score-panel";
 import { useMatchUpdates } from "./_components/use-match-updates";
 import { MatchSyncStatus } from "./_components/match-sync-status";
+import type { MatchSync } from "@/lib/match-collections";
 
 const games = [
   { id: "all", short: "ALL", name: "全部项目", tone: "bg-[#d8ff3e] text-[#10150d]" },
@@ -29,8 +30,8 @@ const games = [
   { id: "mlbb", short: "ML", name: "MLBB", tone: "bg-[#152c3b] text-[#67ccff]" },
 ];
 
-export function EsportsDashboard({ initialMatches, dataSource, stale: initialStale, generatedAt }: { initialMatches: Match[]; dataSource: "pandascore" | "demo"; stale: boolean; generatedAt: string }) {
-  const updates = useMatchUpdates(initialMatches, { source: dataSource, stale: initialStale, generatedAt });
+export function EsportsDashboard({ initialMatches, dataSource, stale: initialStale, generatedAt, sync }: { initialMatches: Match[]; dataSource: "pandascore" | "demo"; stale: boolean; generatedAt: string; sync?: MatchSync }) {
+  const updates = useMatchUpdates(initialMatches, { source: dataSource, stale: initialStale, generatedAt, sync });
   const { matches, stale } = updates;
   const [game, setGame] = useState("all");
   const [today, setToday] = useState<Date | null>(null);
@@ -79,7 +80,7 @@ export function EsportsDashboard({ initialMatches, dataSource, stale: initialSta
       <SidebarInset className="dashboard-content min-w-0 text-foreground">
         <SiteHeader active="总览" sidebarTrigger={<SidebarTrigger aria-label="切换项目侧栏" className="text-soft" />} />
         <div id="main-content" tabIndex={-1} className="dashboard-main mx-auto w-full max-w-[1440px] px-4 py-6 md:px-7 lg:py-8">
-          {stale && <div role="status" className={`mb-5 flex items-start gap-3 rounded-xl border px-4 py-3 text-sm ${matches.length ? "border-warning/20 bg-warning/[0.07] text-warning" : "border-danger/20 bg-danger/[0.07] text-danger"}`}><AlertTriangle className="mt-0.5 size-4 shrink-0" /><p>{matches.length ? "数据同步暂时中断，当前展示上次成功更新的赛程与比分。" : "赛事数据源暂时不可用，请稍后刷新。"}</p></div>}
+          {stale && <div role="status" className={`mb-5 flex items-start gap-3 rounded-xl border px-4 py-3 text-sm ${matches.length ? "border-warning/20 bg-warning/[0.07] text-warning" : "border-danger/20 bg-danger/[0.07] text-danger"}`}><AlertTriangle className="mt-0.5 size-4 shrink-0" /><p>{updates.sync?.status === "partial" ? "部分赛事已更新；未同步的分类保留原记录，空白不代表没有比赛。各分类获取时间见下方。" : matches.length ? "数据同步暂时中断，当前展示上次成功更新的赛程与比分。" : "赛事数据源暂时不可用，请稍后刷新。"}</p></div>}
           <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
             <div><p className="mb-2 text-xs font-semibold tracking-[0.14em] text-brand">THE MATCHDAY</p><h1 className="dashboard-title text-3xl font-bold md:text-4xl">赛事总览<span className="text-brand">.</span></h1><p className="mt-3 text-sm text-muted-foreground">{selectedGame} <span className="mx-2 text-subtle">/</span><strong className="font-semibold text-foreground">{liveMatches.length}</strong> 场进行中 <span className="mx-2 text-subtle">·</span>{nextMatches.length} 场待开赛</p></div>
             <MatchSyncStatus source={dataSource} {...updates} />

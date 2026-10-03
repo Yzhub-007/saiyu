@@ -14,8 +14,8 @@ const match = {
 const response = (data = [match]) => ({ data, meta: { source: "pandascore", stale: false, generatedAt } });
 
 test("fresh snapshots use server acquisition time, including an empty result", () => {
-  assert.deepEqual(readMatchSnapshot(response(), "pandascore"), { matches: [match], updatedAt: generatedAt });
-  assert.deepEqual(readMatchSnapshot(response([]), "pandascore"), { matches: [], updatedAt: generatedAt });
+  assert.deepEqual(readMatchSnapshot(response(), "pandascore"), { matches: [match], updatedAt: generatedAt, stale: false });
+  assert.deepEqual(readMatchSnapshot(response([]), "pandascore"), { matches: [], updatedAt: generatedAt, stale: false });
 });
 test("stale, wrong-source and invalid timestamp responses cannot replace data", () => {
   for (const change of [{ stale: true }, { source: "demo" }, { generatedAt: "bad-date" }]) {

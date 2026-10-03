@@ -1,15 +1,18 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { matchSnapshots } from "@/db/schema";
 import { getMatch, matches as demoMatches, type Match } from "./esports-data";
 import { PandaScoreAdapter } from "./data-sources/pandascore";
 import { getExternalDataSourcesForGame, type ExternalDataSource } from "./external-data-sources";
+import { collectionForMatch, mergeMatchCollections, type MatchSync, type StoredMatches } from "./match-collections";
+import { isMatch, readMatchSync, validTimestamp } from "./match-refresh";
 
 export type MatchDataMeta = {
   source: "pandascore" | "demo";
   licensed: boolean;
   generatedAt: string;
   stale: boolean;
+  sync?: MatchSync;
   warning?: string;
 };
 
@@ -20,7 +23,7 @@ type MatchFilters = {
   dateTo?: string | null;
 };
 
-type MatchListCache = {
+type MatchListCache = StoredMatches & {
   expiresAt: number;
   matches: Match[];
   fetchedAt: string;
@@ -36,8 +39,6 @@ const detailCache = new Map<string, MatchDetailCache>();
 const detailInFlight = new Map<string, Promise<MatchResult>>();
 const CACHE_MS = 30_000;
 const MAX_DETAIL_CACHE_SIZE = 200;
-const MAX_ARCHIVED_MATCHES = 1_000;
-const supportedGames = new Set(["lol", "val", "cs2", "dota", "kog", "pel", "pubg", "mlbb"]);
 
 export function isPandaScoreConfigured() {
   return Boolean(process.env.PANDASCORE_TOKEN?.trim());
@@ -54,6 +55,7 @@ export async function listMatches(filters: MatchFilters = {}): Promise<{ data: M
         licensed: true,
         generatedAt: cached.fetchedAt,
         stale: cached.stale,
+        sync: cached.sync,
         ...(cached.warning ? { warning: cached.warning } : {}),
       },
     };
@@ -90,8 +92,10 @@ export async function findMatch(id: string): Promise<{ data: Match | null; meta:
         meta: {
           source: "pandascore",
           licensed: true,
-          generatedAt: listed.fetchedAt,
-          stale: listed.stale,
+          generatedAt: basicMatch.freshness,
+          // A healthy collection can still update this match during a partial refresh.
+          stale: listed.stale && (listed.sync.collections[collectionForMatch(basicMatch)].state !== "fresh"
+            || basicMatch.freshness !== listed.sync.collections[collectionForMatch(basicMatch)].fetchedAt),
           ...(listed.warning ? { warning: listed.warning } : {}),
         },
       };
@@ -138,40 +142,32 @@ async function loadPandaMatches(): Promise<MatchListCache> {
 }
 
 async function refreshPandaMatches(): Promise<MatchListCache> {
+  const persisted = memoryCache ? null : await loadMatchSnapshot();
+  const previous = memoryCache ?? persisted;
   try {
-    const persisted = memoryCache?.matches.length ? null : await loadMatchSnapshot();
-    const rows = await new PandaScoreAdapter(process.env.PANDASCORE_TOKEN!).listAll();
-    const previousMatches = memoryCache?.matches ?? persisted?.matches ?? [];
-    const unique = new Map(
-      previousMatches
-        .filter((match) => match.status === "complete")
-        .map((match) => [match.id, match]),
-    );
-    // Fresh provider data always wins; completed records that fall outside the
-    // latest API page remain in the bounded local archive.
-    for (const row of rows) unique.set(row.data.id, row.data);
-    const normalized = [...unique.values()]
-      .filter((match) => supportedGames.has(match.game))
-      .map((match) => preserveTeamLogos(match, previousMatches));
-    const archived = normalized
-      .filter((match) => match.status === "complete")
-      .sort((a, b) => Date.parse(b.startsAt) - Date.parse(a.startsAt))
-      .slice(0, MAX_ARCHIVED_MATCHES);
-    const active = normalized.filter((match) => match.status !== "complete");
-    const matches = [...archived, ...active].sort((a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt));
-    if (!matches.length) throw new Error("PandaScore returned no supported matches");
-    const fetchedAt = new Date().toISOString();
-    memoryCache = { expiresAt: Date.now() + CACHE_MS, matches, fetchedAt, stale: false };
-    await saveMatchSnapshot(matches, fetchedAt);
+    const results = (await new PandaScoreAdapter(process.env.PANDASCORE_TOKEN!).listCollections()).map((result) =>
+      result.ok && !result.matches.every(isMatch)
+        ? { kind: result.kind, ok: false as const, error: "PandaScore returned invalid match records" }
+        : result);
+    const merged = mergeMatchCollections(previous, results, new Date().toISOString());
+    const failures = results.flatMap((result) => result.ok ? [] : [`${result.kind}: ${result.error}`]);
+    const warning = failures.length ? safeMessage(new Error(`PandaScore collection failures: ${failures.join("; ")}`)) : undefined;
+    if (warning) console.warn("PandaScore partial/unavailable refresh", warning);
+    memoryCache = {
+      ...merged,
+      matches: merged.matches.map((match) => preserveTeamLogos(match, previous?.matches ?? [])),
+      expiresAt: Date.now() + CACHE_MS,
+      stale: merged.sync.status !== "fresh",
+      warning,
+    };
+    if (merged.sync.status !== "stale") await saveMatchSnapshot(memoryCache);
     return memoryCache;
   } catch (error) {
     const warning = safeMessage(error);
     console.error("PandaScore refresh failed", warning);
-    const fallback = memoryCache?.matches.length ? memoryCache : await loadMatchSnapshot();
     memoryCache = {
+      ...mergeMatchCollections(previous, [], new Date().toISOString()),
       expiresAt: Date.now() + CACHE_MS,
-      matches: fallback?.matches ?? [],
-      fetchedAt: fallback?.fetchedAt ?? new Date().toISOString(),
       stale: true,
       warning,
     };
@@ -218,7 +214,7 @@ function staleMatchResult(id: string, warning: string): MatchResult {
       generatedAt: previous?.data
         ? previous.meta.generatedAt
         : listed && memoryCache
-          ? memoryCache.fetchedAt
+          ? listed.freshness
           : new Date().toISOString(),
       stale: true,
       warning,
@@ -241,29 +237,40 @@ function preserveTeamLogos(match: Match, previous: Match[]): Match {
   };
 }
 
-async function saveMatchSnapshot(matches: Match[], fetchedAt: string) {
-  if (!matches.length) return;
+async function saveMatchSnapshot({ matches, fetchedAt, sync }: StoredMatches) {
+  const payload = JSON.stringify({ version: 2, matches, sync });
   try {
     await getDb().insert(matchSnapshots).values({
       key: "latest",
-      payload: JSON.stringify(matches),
+      payload,
       fetchedAt,
       updatedAt: fetchedAt,
     }).onConflictDoUpdate({
       target: matchSnapshots.key,
-      set: { payload: JSON.stringify(matches), fetchedAt, updatedAt: fetchedAt },
+      set: { payload, fetchedAt, updatedAt: fetchedAt },
+      setWhere: sql`${matchSnapshots.fetchedAt} <= ${fetchedAt}`,
     });
   } catch (error) {
     console.warn("Unable to persist PandaScore snapshot", safeMessage(error));
   }
 }
 
-async function loadMatchSnapshot(): Promise<{ matches: Match[]; fetchedAt: string } | null> {
+async function loadMatchSnapshot(): Promise<StoredMatches | null> {
   try {
     const [snapshot] = await getDb().select().from(matchSnapshots).where(eq(matchSnapshots.key, "latest")).limit(1);
     if (!snapshot) return null;
-    const parsed = JSON.parse(snapshot.payload) as Match[];
-    return Array.isArray(parsed) && parsed.length ? { matches: parsed, fetchedAt: snapshot.fetchedAt } : null;
+    if (!validTimestamp(snapshot.fetchedAt)) return null;
+    const parsed = JSON.parse(snapshot.payload);
+    // Read the previous array format without changing the DB schema or old data.
+    const matches: unknown = Array.isArray(parsed) ? parsed : parsed?.version === 2 ? parsed.matches : null;
+    if (!Array.isArray(matches) || !matches.every(isMatch)) return null;
+    const legacySync: MatchSync = { status: "fresh", lastFullSuccessAt: snapshot.fetchedAt, collections: {
+      running: { state: "fresh", fetchedAt: snapshot.fetchedAt },
+      upcoming: { state: "fresh", fetchedAt: snapshot.fetchedAt },
+      past: { state: "fresh", fetchedAt: snapshot.fetchedAt },
+    } };
+    const sync = Array.isArray(parsed) ? legacySync : readMatchSync(parsed.sync);
+    return sync ? { matches, fetchedAt: snapshot.fetchedAt, sync } : null;
   } catch (error) {
     console.warn("Unable to read PandaScore snapshot", safeMessage(error));
     return null;

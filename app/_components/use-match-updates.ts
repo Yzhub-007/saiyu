@@ -2,10 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Match } from "@/lib/esports-data";
-import { isOlderSnapshot, readMatchSnapshot, validTimestamp, type MatchSource } from "@/lib/match-refresh";
+import { isOlderSnapshot, readMatchSnapshot, reconcileMatchSnapshot, validTimestamp, type MatchSource } from "@/lib/match-refresh";
+import type { MatchSync } from "@/lib/match-collections";
 
-type MatchUpdates = { matches: Match[]; stale: boolean; updatedAt: string | null; offline: boolean; refreshing: boolean };
-type Options = { source: MatchSource; stale: boolean; generatedAt?: string };
+type MatchUpdates = { matches: Match[]; stale: boolean; sync?: MatchSync; updatedAt: string | null; offline: boolean; refreshing: boolean };
+type Options = { source: MatchSource; stale: boolean; generatedAt?: string; sync?: MatchSync };
 
 function latestFreshness(matches: Match[]) {
   let latest: string | null = null;
@@ -39,7 +40,8 @@ function useMatchPolling(initialMatches: Match[], options: Options, endpoint: st
   const [state, setState] = useState<MatchUpdates>(() => ({
     matches: initialMatches,
     stale: options.stale,
-    updatedAt: options.stale && !initialMatches.length ? null : validTimestamp(options.generatedAt) ? options.generatedAt : latestFreshness(initialMatches),
+    sync: options.sync,
+    updatedAt: options.stale && !initialMatches.length && options.sync?.status !== "partial" ? null : validTimestamp(options.generatedAt) ? options.generatedAt : latestFreshness(initialMatches),
     offline: false,
     refreshing: false,
   }));
@@ -53,7 +55,7 @@ function useMatchPolling(initialMatches: Match[], options: Options, endpoint: st
     let timer: number | null = null;
     let activeRequest: AbortController | null = null;
 
-    const markStale = () => setState((current) => current.stale ? current : { ...current, stale: true });
+    const markStale = () => setState((current) => ({ ...current, stale: true, sync: undefined }));
 
     function schedule() {
       if (!disposed && !document.hidden && navigator.onLine !== false) timer = window.setTimeout(() => void refresh(), 30_000);
@@ -78,8 +80,8 @@ function useMatchPolling(initialMatches: Match[], options: Options, endpoint: st
         }
         // A different worker may return an older cached response. Never roll scores back.
         setState((current) => isOlderSnapshot(snapshot, current.updatedAt)
-          ? { ...current, stale: true }
-          : { ...snapshot, stale: false, offline: false, refreshing: false });
+          ? { ...current, stale: true, sync: undefined }
+          : { ...reconcileMatchSnapshot(snapshot, current.matches), offline: false, refreshing: false });
       } catch {
         if (!disposed && !request.signal.aborted && !document.hidden) markStale();
       } finally {
@@ -102,7 +104,7 @@ function useMatchPolling(initialMatches: Match[], options: Options, endpoint: st
       stop();
       if (disposed) return;
       const offline = navigator.onLine === false;
-      setState((current) => ({ ...current, offline, refreshing: false, stale: current.stale || offline }));
+      setState((current) => ({ ...current, offline, refreshing: false, stale: current.stale || offline, sync: offline ? undefined : current.sync }));
       if (!document.hidden && !offline) void refresh();
     }
 
