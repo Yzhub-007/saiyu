@@ -1,126 +1,192 @@
-# vinext-starter
+# 赛域（Saiyu）
 
-A clean full-stack starter running on [vinext](https://github.com/cloudflare/vinext), with optional Cloudflare D1 and Drizzle support.
+赛域是一个面向中文用户的多项目电竞赛事聚合平台，集中展示比赛日程、实时状态、历史比分、赛事资料、战队与选手信息，并提供关注、提醒和日历订阅能力。
 
-## Prerequisites
+项目基于 Next.js、React、Vinext 与 Cloudflare Workers 构建，可接入 PandaScore 授权赛事数据、Supabase Auth、Cloudflare D1、Resend 邮件和 Turnstile。
 
-- Node.js `>=22.13.0`
-- Portable: Windows, macOS, or Linux; no Bash required
-- Managed Linux: managed Linux runtime with Bash, `flock`, `curl`, `sha256sum`, and GNU `timeout`
-- Git is required only for publishing
+## 主要功能
 
-## Sites Lifecycle
+- **赛事首页**：汇总进行中、即将开始和已结束的比赛。
+- **赛程中心**：支持列表、周视图和月历视图，并可按游戏项目筛选。
+- **比赛详情**：展示对阵、比分、赛制、阶段、官方观赛入口和数据更新时间。
+- **赛事资料**：展示赛事赛程、参赛战队和对应的资料来源。
+- **战队与选手**：提供战队赛程、基础阵容和公开选手资料。
+- **战力分析**：根据可用样本展示战队排名与分析结果。
+- **资料库与搜索**：聚合公开赛事资料，并提供站内检索。
+- **关注与提醒**：关注游戏、赛事或战队，配置站内及邮件提醒。
+- **日历订阅**：下载全部赛程或单场比赛的 `.ics` 日历文件。
+- **账号系统**：支持邮箱 OTP、Google OAuth，以及托管环境中的 ChatGPT 登录。
+- **运营工作台**：检查缺失直播入口、待确认对阵和数据同步状态。
+- **响应式主题**：支持桌面端、移动端以及浅色/深色主题。
 
-The Sites initializer copies the shared starter and selects managed-linux only when `SITES_MANAGED_LINUX_CONTAINER=1`; otherwise it selects portable. It saves the selection only in ignored `.sites-runtime/execution-profile.json`. Both profiles copy/configure first, then use the plugin's separate `install-dependencies.mjs` step to measure installation independently. Edit source under `app/` and follow the Sites skill for installation, preview, builds, and publishing.
+## 技术栈
 
-Run `node <plugin-root>/scripts/configure-execution-profile.mjs` only when the profile is unknown for the current checkout and environment. Profile changes do not alter tracked source or require reinstalling otherwise-valid dependencies; restart an existing preview to use the new selection. Do not commit or upload `.sites-runtime/`.
+| 分类 | 技术 |
+| --- | --- |
+| 前端 | Next.js 16、React 19、TypeScript、Tailwind CSS 4 |
+| UI | Base UI、Radix UI、shadcn、Lucide、Recharts |
+| 运行时 | Vinext、Vite、Cloudflare Workers、Wrangler |
+| 数据 | PandaScore、Cloudflare D1、Drizzle ORM |
+| 认证 | Supabase Auth、Google OAuth、邮箱 OTP、ChatGPT Sign-In |
+| 通知 | Resend、站内通知、ICS 日历 |
+| 安全 | Cloudflare Turnstile、签名退订链接、服务端密钥 |
+| 测试与质量 | Node.js Test Runner、ESLint、TypeScript |
 
-This starter does not use `wrangler.jsonc`.
+## 页面与接口
 
-`install:ci` runs `npm ci` once against the shared lockfile, disables parent-workspace discovery, and includes required dev/optional dependencies despite production/omit settings. Sharp defaults to prebuilt binaries unless explicitly configured otherwise. Do not overlap installers.
+主要页面：
 
-- **Portable:** Preserve host HOME, npm cache, registry, proxy, temporary paths, retry/concurrency settings, and lifecycle-script policy. Use `--prefer-offline --no-audit --no-fund`.
-- **Managed Linux:** Use the existing project-local HOME/cache/tmp setup and Linux install lock, tarball preflight, and timeout. Restore the image-seeded npm cache only when its lockfile hash matches; retain network fallback. Builds keep their existing timeout. These helpers are not invoked by the portable profile.
+- `/`：赛事首页
+- `/schedule`：赛程中心
+- `/tournaments`：赛事列表与详情
+- `/teams`：战队列表与详情
+- `/players/[id]`：选手资料
+- `/rankings`：战力分析
+- `/library`：资料库
+- `/search`：站内搜索
+- `/account`：登录与提醒偏好
+- `/notifications`：站内通知
+- `/admin`：运营工作台
 
-`scripts/sites-env.mjs` preserves the caller's HOME, npm cache, proxy, XDG, and temporary-directory configuration while defaulting Wrangler and Miniflare state to the checkout. If npm reports an unwritable cache, select a writable path with `npm_config_cache` for that install. The `dev` and `start` scripts also keep Wrangler logs inside the checkout. Generated `.sites-runtime/` and `.wrangler/` directories are disposable and ignored by Git.
+主要 API 位于 `app/api/v1/`，覆盖比赛、赛事、战队、选手、关注、提醒偏好、日历订阅和公开集成信息。
 
-On portable, `npm run dev` uses `vinext dev` with HMR, starting at port 5173. Vinext records the running server in ignored `.vinext/` state, rejects an ordinary duplicate launch, and recovers stale state after a stopped process; exactly simultaneous starts can race. Pass `--port <port>` or `--hostname <host>` after `npm run dev --` when needed; keep portable previews on loopback.
+## 环境要求
 
-For browser QA on managed Linux, use `sites-preview start`. The project's dev script runs Vite and accepts the supervisor's `--host 0.0.0.0 --port 4173 --strictPort` arguments. The internal browser uses `http://terminal.local:4173/`; it is not a user-facing URL. The supervisor owns the preview lifecycle. The ignored local profile survives the supervisor's cleared process environment.
+- Node.js `>= 22.13.0`
+- npm（项目包含 `package-lock.json`）
+- Git（仅克隆与发布时需要）
 
-The portable profile simulates ChatGPT sign-in only for loopback development requests. Visit `/signin-with-chatgpt?return_to=/` to sign in as `local_seedy` (`seedy@sites.test`, display name `Seedy`) and `/signout-with-chatgpt?return_to=/` to sign out. The development cookie preserves that identity across server restarts. Mock auth is disabled in the managed-linux profile and is not included in production builds; hosted authentication remains dispatch-owned.
+## 本地开发
 
-The Worker uses `vinext/server/fetch-handler`, including Vinext's config-aware image handling. After building, `npm start` runs that Worker locally through Wrangler on `127.0.0.1`, sharing `.wrangler/state` with dev preview and local D1 migrations; it does not deploy the site or simulate sign-in. Use the URL printed by the server. Pass `npm start -- --port <port>` to select a different built-preview port.
-
-Local previews use Miniflare's placeholder `Request.cf` metadata without a network lookup. Set `CLOUDFLARE_CF_FETCH_ENABLED=true` to opt into fetching preview metadata; this setting does not change hosted request metadata.
-
-Local tool usage metrics are disabled by default. Set `WRANGLER_SEND_METRICS=true` to opt in.
-
-## Included Shape
-
-- edit site code under `app/`
-- `app/chatgpt-auth.ts` provides optional dispatch-owned ChatGPT sign-in helpers
-- `.openai/hosting.json` declares optional Sites D1 and R2 bindings
-- `vite.config.ts` simulates declared bindings for local development
-- `db/index.ts` reads the D1 binding from the Cloudflare Worker environment
-- `db/schema.ts` starts intentionally empty
-- `@cloudflare/workers-types` provides Worker types; `cloudflare-env.d.ts` declares optional `DB`/`BUCKET` bindings—update these declarations if binding names change
-- `examples/d1/` contains an optional D1 example surface
-- `drizzle.config.ts` supports local migration generation when needed
-
-## Workspace Auth Headers
-
-Signed-in visitors receive both `oai-authenticated-user-id` and `oai-authenticated-user-email`. Private Sites require every visitor to sign in; public Sites may also have anonymous visitors, for whom neither header is present.
-
-The user ID is stable for the same user on the same Site and different across Sites. Use it as the durable user key; use email and name for display or contact purposes.
-
-SIWC-authenticated workspace sites may also receive `oai-authenticated-user-full-name` when the user's SIWC profile has a non-empty `name` claim. The full-name value is percent-encoded UTF-8 and is accompanied by `oai-authenticated-user-full-name-encoding: percent-encoded-utf-8`.
-
-Treat the full name as optional and fall back to email when it is absent:
-
-```tsx
-import { headers } from "next/headers";
-
-export default async function Home() {
-  const requestHeaders = await headers();
-  const userId = requestHeaders.get("oai-authenticated-user-id");
-  const email = requestHeaders.get("oai-authenticated-user-email");
-  const encodedFullName = requestHeaders.get("oai-authenticated-user-full-name");
-  const fullName =
-    encodedFullName &&
-    requestHeaders.get("oai-authenticated-user-full-name-encoding") ===
-      "percent-encoded-utf-8"
-      ? decodeURIComponent(encodedFullName)
-      : null;
-
-  const displayName = fullName ?? email;
-  // ...
-}
+```bash
+git clone https://github.com/Yzhub-007/saiyu.git
+cd saiyu
+npm ci
+copy .env.example .env.local
+npm run dev
 ```
 
-## Optional Dispatch-Owned ChatGPT Sign-In
+macOS 或 Linux 可使用：
 
-Import the ready-to-use helpers from `app/chatgpt-auth.ts` when the site needs optional or required ChatGPT sign-in:
+```bash
+cp .env.example .env.local
+```
 
-- Use `getChatGPTUser()` for optional signed-in UI.
-- Use the returned `userId` as the stable user key for user-owned records; do not use email as a durable identifier.
-- Use `requireChatGPTUser(returnTo)` for server-rendered pages that should send anonymous visitors through Sign in with ChatGPT.
-- In a Server Component, start sign-in with `<a href={chatGPTSignInPath(returnTo)} target="_top">`. The auth helper module is server-only; do not import it into a Client Component.
-- Do not use `fetch`, XHR, a client-side router, or a framework link that can prefetch the sign-in route. SIWC must start as a top-level navigation.
-- Never request the AuthAPI authorization endpoint directly. The dispatch-owned `/signin-with-chatgpt` route must start the SIWC flow.
-- Use `chatGPTSignOutPath(returnTo)` for browser sign-out links or actions.
-- Pass a same-origin relative `returnTo` path for the destination after sign-in or sign-out. The helper validates and safely encodes it.
-- Mark protected pages with `export const dynamic = "force-dynamic"` because they depend on per-request identity headers.
+开发服务器默认由 Vinext 启动，通常访问 `http://localhost:5173`。如需指定端口：
 
-Dispatch owns `/signin-with-chatgpt`, `/signout-with-chatgpt`, `/callback`, the OAuth cookies, and identity header injection. Do not implement app routes for those reserved paths. Routes that do not import and call the helper remain anonymous-compatible.
+```bash
+npm run dev -- --port 3000
+```
 
-SIWC establishes identity only; it does not prove workspace membership. Use the Sites hosting platform's access policy controls for workspace-wide restrictions, or enforce explicit server-side membership or allowlist checks.
+未配置外部赛事数据时，应用可使用仓库内置演示数据展示主要界面。
 
-Use SIWC for account pages, user-specific dashboards, saved records, and write actions tied to the current ChatGPT user. Leave public content anonymous.
+## 环境变量
 
-## Local D1 migrations
+从 `.env.example` 创建 `.env.local`，按需配置：
 
-For a D1-backed local preview, generate SQL with `npm run db:generate`. Build once through the Sites skill's build entrypoint (or `npm run build` for standalone use) to generate `dist/server/wrangler.json`, rebuilding if bindings change. From the project root, apply each pending migration in order:
+| 变量 | 是否必需 | 用途 |
+| --- | --- | --- |
+| `PANDASCORE_TOKEN` | 否 | 获取授权电竞赛程与比赛数据 |
+| `SUPABASE_URL` | 登录功能需要 | Supabase 项目地址 |
+| `SUPABASE_ANON_KEY` | 登录功能需要 | Supabase 匿名公钥 |
+| `GOOGLE_OAUTH_ENABLED` | 否 | 启用 Google OAuth |
+| `EMAIL_OTP_ENABLED` | 否 | 启用邮箱验证码登录 |
+| `RESEND_API_KEY` | 邮件提醒需要 | 发送提醒邮件 |
+| `REMINDER_FROM_EMAIL` | 邮件提醒需要 | 提醒邮件发件人 |
+| `REMINDER_CRON_SECRET` | 定时任务需要 | 保护提醒任务接口 |
+| `REMINDER_UNSUBSCRIBE_SECRET` | 邮件提醒需要 | 签名退订链接 |
+| `REMINDER_SCHEDULER_ENABLED` | 否 | 启用提醒调度器 |
+| `SITE_URL` | 生产环境建议 | 站点公开地址 |
+| `TURNSTILE_SITE_KEY` | 否 | 邮箱 OTP 的前端验证密钥 |
+| `TURNSTILE_SECRET_KEY` | 否 | Turnstile 服务端验证密钥 |
 
-```sh
+不要提交 `.env.local` 或任何真实访问令牌。
+
+## 常用命令
+
+```bash
+npm run dev          # 启动开发服务器
+npm run build        # 构建 Cloudflare Worker 产物
+npm run start        # 使用 Wrangler 本地预览构建结果
+npm run lint         # 执行 ESLint 检查
+npm run db:generate  # 根据 Drizzle Schema 生成迁移
+```
+
+当前 `package.json` 未单独定义 `test` 脚本，测试可直接运行：
+
+```bash
+node --test tests/*.test.mjs
+```
+
+## 数据与降级策略
+
+- 生产赛事数据可由 PandaScore 授权接口提供。
+- 数据同步失败时，页面会保留最后一次成功同步的赛程或历史比分。
+- 仓库包含演示赛事数据，便于无密钥状态下开发和预览。
+- 外部资料链接会标明来源，避免将未经验证的数据当作正式赛事事实。
+- 战力分析仅在样本满足规则时生成，不使用占位值伪造结论。
+
+更多说明见：
+
+- `docs/match-data.md`：比赛数据结构与同步规则
+- `docs/production-integrations.md`：生产认证、提醒和外部服务接入
+
+## Cloudflare D1
+
+项目通过 `.openai/hosting.json` 声明 D1 绑定名 `DB`。修改 `db/schema.ts` 后生成迁移：
+
+```bash
+npm run db:generate
+```
+
+构建项目后，可将迁移应用到本地 Wrangler 状态：
+
+```bash
 node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js d1 execute DB --local --config dist/server/wrangler.json --persist-to .wrangler/state --file drizzle/0000_example.sql
 ```
 
-Replace the filename with the pending migration and `DB` with your D1 binding name if different. Use `.wrangler/state`, not `.wrangler/state/v3`; Wrangler adds the versioned directories. Do not replay migrations already applied locally. This updates only the preview database; publishing applies production migrations separately.
+请将迁移文件名替换为实际待执行文件，且不要重复执行已经应用的迁移。
 
-## Diagnostic Commands
+## 构建与部署
 
-- `npm run install:ci`: perform the one locked dependency install
-- `npm run dev`: start the Vite/Vinext development server
-- `npm run build`: build the deployable Sites artifact
-- `npm run start`: preview the built Worker locally with D1/R2 support
-- `npm run db:generate`: generate Drizzle migrations after schema changes
+```bash
+npm ci
+npm run lint
+node --test tests/*.test.mjs
+npm run build
+npm run start
+```
 
-When using the Sites plugin, follow its skill instructions for installation, builds, and publishing. These npm commands remain available for standalone use.
+`npm run build` 会生成适用于 Cloudflare Worker 的 `dist/` 产物；`npm run start` 仅用于本地预览，不会自动发布线上站点。生产环境还需在托管平台配置 D1 绑定及所需环境变量。
 
-The portable build runs Vinext directly without a host `timeout` command. The managed-linux build uses `scripts/build-verified.sh` and its existing `SITES_BUILD_TIMEOUT` setting.
+## 项目结构
 
-## Learn More
+```text
+app/          页面、路由、API 与业务组件
+components/   通用 UI 组件
+db/           D1/Drizzle 数据访问与 Schema
+docs/         数据及生产集成文档
+drizzle/      数据库迁移
+lib/          赛事服务、数据源、认证、通知与工具函数
+public/       静态资源
+scripts/      安装、构建和运行辅助脚本
+tests/        数据集合与刷新逻辑测试
+```
 
-- [vinext Documentation](https://github.com/cloudflare/vinext)
-- [Drizzle D1 Guide](https://orm.drizzle.team/docs/get-started/d1-new)
+## 数据来源与合规
+
+本项目只应使用获得授权或允许公开访问的数据源。真实赛事令牌、认证密钥和邮件服务密钥必须存放在部署平台的环境变量中。各赛事名称、队伍名称、标识和商标归其各自权利人所有。
+
+## 贡献
+
+欢迎通过 Issue 或 Pull Request 提交问题和改进。提交前建议完成：
+
+```bash
+npm run lint
+node --test tests/*.test.mjs
+npm run build
+```
+
+## 许可证
+
+仓库当前未声明开源许可证。除非仓库所有者另行授权，否则默认保留全部权利。
